@@ -12,6 +12,10 @@
 - `NEMU PA` 全部内容
 - 阅读`Opensbi`和`riscv spec volum II`
 
+#### 启动linux和启动nanos-lite的区别
+
+>TODO:!
+
 ## 启动 linux 的多种方式
 
 - `fsbl->opensbi->linux`
@@ -365,6 +369,10 @@ int isa_exec_once(Decode *s) {
 → Device Drivers → IRQ chip support->SiFive Platform-Level Interrupt Controller
 ```
 
+### linux的打开方式
+
+>TODO:如何科学地阅读linux的源代码?代码跳转等等
+
 ### 编译linux
 
 `make ARCH=riscv CROSS_COMPILE=riscv32-unknown-linux-gnu- -j $(nproc)`
@@ -386,7 +394,6 @@ int isa_exec_once(Decode *s) {
 为啥不先看看 linux 访问了那些寄存器呢?
 
 但注意:有一个 time (timeh) 寄存器反汇编出来的指令是 rdtime/rdtimeh
-
 
 > TODO: 内部中断和外部中断
 
@@ -440,19 +447,41 @@ crossing. It is thus more natural to expose mtime as a memory-mapped register th
 CSR.
 ```
 
-需要给设备树的 `cpus` 节点加一个
+### 再次提醒:基础设施
+
+linux的报错输出依赖关键csr寄存器的实现正确,但是csr实现的细节很繁杂,没有difftest的话很可能会存在某些地方实现错误!
+
+#### gdb大法好
+
+gdb可以极大地加强你的调试体验,你不会喜欢一直使用printk调试法/ebreak调试法的
+
+~~ebrak调试大法~~(别学)
+
 ```
-		timebase-frequency = <1000000>;
+asm volatile (
+    "mv a0, %0\n\t"    // 将 start 的值加载到 a0 寄存器
+    "mv a1, %1\n\t"    // 将 end 的值加载到 a1 寄存器
+    "ebreak"           // 执行 ebreak 指令
+    :
+    : "r"(start), "r"(end) // 输入操作数：将 start 和 end 传递给寄存器
+    : "a0", "a1"       // 声明 a0 和 a1 寄存器会被修改
+);
 ```
+
+gdb好用的地方之一:可以读取函数调用的`backtrace`和参数,如果你的earlycon输出不正常也可以使用gdb来调试
+
 ```
 #2  0x8091d2d8 in panic (fmt=fmt@entry=0x81410b78 <payload_bin+12651384> "\0014RISC-V system with no 'timebase-frequency' in DTS\n")
     at kernel/panic.c:443
 ```
 
-### 再次提醒:基础设施
+##### 检查编译内核的时候是否添加了调试新息
 
-rv手册里面存在非常多的细节,没有difftest的话很可能会存在一个地方实现错误!
-gdb可以极大地加强你的调试体验
+```
+→ Kernel hacking → Compile-time checks and compiler options -> Compile the kernel with debug info 
+```
+
+打开这个选项以后gdb的调试体验会极大增强(可以读函数参数,可以对着源代码调试)
 
 #### 来自虚拟内存的问候NO.1
 
@@ -470,6 +499,16 @@ linux启动早期会开启MMU,MMU的实现会导致gdb远程调试出现bug(无�
 
 当我们想到这个问题的时候,大概率有人想过了,这就是OpenSBI提供的`earlycon`功能,如果启用了这个功能以后,linux的输出会经过一次`ecall`以后跳转到Opensbi后然后由Opensbi输出
 
+#### 启用linux的printk的支持
+
+建议检查一下printk的选项有没有开,如果printk没有开那么不会输出log!
+
+```
+Kernel hacking-> printk and dmesg options
+
+→ General setup → Configure standard kernel features (expert users) -> Enable support for printk  
+```
+
 #### 启用linux的earlycon
 
 确保在menuconfig里面勾选了earlycon功能,并且给linux传递了`earlycon=sbi`作为启动参数(可以通过设备树传递,也可以临时在menuconfig里面指定(` → Boot options->Built-in kernel command line `))
@@ -479,6 +518,32 @@ linux启动早期会开启MMU,MMU的实现会导致gdb远程调试出现bug(无�
 ```
 
 #### 来自虚拟内存的问候NO.2
+
+遇到了问题正在阅读linuxmmu的源代码?
+
+但是如果阅读linux的源代码,会发现一个奇怪的逻辑
+
+```c
+
+void __init create_pgd_mapping(pgd_t *pgdp,
+				      uintptr_t va, phys_addr_t pa,
+				      phys_addr_t sz, pgprot_t prot)
+{
+	pgd_next_t *nextp;
+	phys_addr_t next_phys;
+	uintptr_t pgd_idx = pgd_index(va);
+
+	if (sz == PGDIR_SIZE) {
+		if (pgd_val(pgdp[pgd_idx]) == 0)
+			pgdp[pgd_idx] = pfn_pgd(PFN_DOWN(pa), prot);
+		return;
+	}
+...
+}
+
+```
+
+> 不理解?该去翻一下手册了(10.3.2. Virtual Address Translation Process)
 
 ### Kernel 跑着跑着 hit good (bad) trap 了?
 
@@ -511,20 +576,14 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 }
 ```
 
-
-Pte 0 似乎放在了 0 x 80400000=>不是放在了这里, 这是一个叶子节点!
-
-> TODO: 这里贴一段映射空间的代码, 包含判断要映射大页的逻辑
 ### 设备树
 
 > TODO: 补上作用
 
-第一次学设备树会觉得很抽象, 其实可以直接额参考文档/其他设备的 example
-设备"树"有很多种写法, 和 `json` 很像, 但也有区别
-
 > TODO: 详细写一下设备树的理解
 
-可以参考
+第一次学设备树会觉得很抽象, 其实可以直接额参考文档/其他设备的 example
+设备"树"有很多种写法, 和 `json` 很像, 但也有区别
 - [`elinux.org/device_tree_usage`](https://elinux.org/Device_Tree_Usage)
 - [`k210 的 devicetree`](https://github.com/riscv-software-src/opensbi/blob/555055d14534e436073c818e04f4a5f0d3c141dc/platform/kendryte/k210/k210.dts)
 - [`野火的文档`](https://doc.embedfire.com/linux/imx6/driver/zh/latest/linux_driver/driver_tree.html)
@@ -558,8 +617,93 @@ Pte 0 似乎放在了 0 x 80400000=>不是放在了这里, 这是一个叶子节
                +---------------+
 ```
 
+#### 来自虚拟内存的问候NO.3:opensbi 是如何把设备树地址传递给 linux 的
+
+如果你尝试调试linux内核中访问设备树的部分,你会发现:linux访问设备树时候访问的是`0x3e200000`附近的地址
+
+这个地址是怎么来的呢?
+
+根据手册规定,设备树地址应该放在a1寄存器传递给linux
+
+>如何确定这块地址是不是设备树->可以扫描内存看看魔数对不对
+
+```
+#ifdef CONFIG_BUILTIN_DTB
+	la a0, __dtb_start
+#else
+	mv a0, s1
+#endif /* CONFIG_BUILTIN_DTB */
+	/* Set trap vector to spin forever to help debug */
+	la a3, .Lsecondary_park
+	csrw CSR_TVEC, a3
+	call setup_vm
+```
+
+之后我们追踪一下这个变量(`head.s`), 发现传递给了 ` setup_vm `,然后会映射这片内存。
+
+##### 检查设备树是否被正常加载
+
+你需要给这里达一个断点,来检测设备树是否读取成功
+
+```
+status = early_init_dt_verify(params);
+if (!status)
+	return false;
+```
+
+###### 一个未解之谜
+
+**如果你有任何想法,pr/issue is always welcomed!**
+
+如果你的设备树传递的地址没有对齐,可能会在这里设置错误的`dtb_early_va`,我没搞清楚为什么不需要显示对齐
+
+这里建议按照[`Opensbi官方仓库里面的fpga/ariane`](https://github.com/riscv-software-src/opensbi/blob/master/platform/fpga/ariane/objects.mk)的makefile来配制`FW_PAYLOAD_FDT_ADDR`,`FW_PAYLOAD_OFFSET`,`FW_PAYLOAD_ALIGN`等参数
+
+linux的代码:
+```
+	dtb_early_va = (void *)fix_fdt_va + (dtb_pa & (PMD_SIZE - 1));
+```
+我认为需要显式对齐的代码:
+```
+	dtb_early_va = (void *)(fix_fdt_va & ~(PMD_SIZE-1) ) + (dtb_pa & (PMD_SIZE - 1));
+```
+
+#### 思考: 设备树是如何解析调用驱动的?
+
+>TODO:细化!
+
+看了一下 `drivers/of/fdt.c`, 里面的 `early_init_dt_scan_nodes`,
+
+```c
+void __init early_init_dt_scan_nodes(void)
+{
+	int rc = 0;
+
+	/* Initialize {size,address}-cells info */
+	of_scan_flat_dt(early_init_dt_scan_root, NULL);
+
+	/* Retrieve various information from the /chosen node */
+	rc = of_scan_flat_dt(early_init_dt_scan_chosen, boot_command_line);
+	if (!rc)
+		pr_warn("No chosen node found, continuing without\n");
+
+	/* Setup memory, calling early_init_dt_add_memory_arch */
+	of_scan_flat_dt(early_init_dt_scan_memory, NULL);
+
+	/* Handle linux,usable-memory-range property */
+	early_init_dt_check_for_usable_mem_range();
+}
+```
+> 这里应该只解析了设备树,初始化设备还在后面,但是内存(页表似乎是在这里初始化的)
+
+
+##### 设备树映射虚拟内存的逻辑:
+
+虚拟内存的映射也是根据设备树来的,在设备树读取到内存节点的时候, 会调用 `early_init_dt_add_memory_arch` 之后调用 `memblock_add` 存储地址进 `memblock.memory` 以便之后读取
 
 ### Linux 适配 nemu-uart 驱动!
+> TODO:需要大规模重构!
+
 主要参考 [`linux 内核 driver-api/serial/driver`](https://docs.kernel.org/driver-api/serial/driver.html#uart-ops)
 同时可以参考 [`linux 内核的 uart-lite 的驱动`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/drivers/tty/serial/uartlite.c?h=v5.15.178)
 
@@ -576,11 +720,6 @@ Obj-$(CONFIG_SERIAL_NEMUUART) += nemu-uart. O
 使用 platform_driver 代表一个平台驱动程序, 用于管理和控制 platform_device。
 
 Linux 驱动主要包含几个结构体
-
-
-
-
-> TODO: 合并后面的一个章节
 
 #### 驱动如何注册?
 
@@ -641,110 +780,7 @@ Uart-lite
 - [`uartlite's dt`](https://www.kernel.org/doc/Documentation/devicetree/bindings/serial/xlnx%2Copb-uartlite.txt)
 - [`uartlite's docs`](https://docs.amd.com/v/u/en-US/pg142-axi-uartlite)
 
-
-### 思考: opensbi 是如何把设备树地址传递给 linux 的
-
-首先给 linux 的起始地址打上断点, 会发现 a 1 寄存器就是!
-可以扫描内存看看，魔数对不对
-```
-#ifdef CONFIG_BUILTIN_DTB
-	la a0, __dtb_start
-#else
-	mv a0, s1
-#endif /* CONFIG_BUILTIN_DTB */
-	/* Set trap vector to spin forever to help debug */
-	la a3, .Lsecondary_park
-	csrw CSR_TVEC, a3
-	call setup_vm
-```
-
-
-之后我们追踪一下这个数字往那跑(`head.s`), 发现传递给了 ` setup_vm `, 然后映射这段内存!
-
-`0x3e400000`
-
-一开始地址没有传对导致设备树没有加载!
-```
-status = early_init_dt_verify(params);
-if (!status)
-	return false;
-```
-
-Fdt 32_ld
-
-在设备树读取到内存节点的时候, 会调用 `early_init_dt_add_memory_arch` 之后调用 `memblock_add` 存储地址进 `memblock.memory` 以便之后读取
-
- `memblock.reserved` 是啥?
-##### 地址转换问题 :
-完全没看懂这里在干嘛
-
-```
-	dtb_early_va = (void *)fix_fdt_va + (dtb_pa & (PMD_SIZE - 1));
-```
-
-为什么不这样写来强制对齐?
-
-```
-	dtb_early_va = (void *)(fix_fdt_va & ~(PMD_SIZE-1) ) + (dtb_pa & (PMD_SIZE - 1));
-```
-
-这也太奇怪了...
-
-暂时把设备树放在 `0x80400000` 作为一个 workwround
-
-之后会调用
-
-```
-void __init paging_init(void)
-{
-	setup_bootmem();
-	setup_vm_final();
-
-	/* Depend on that Linear Mapping is ready */
-	memblock_allow_resize();
-}
-```
- setup_bootmem ？
-
-来重新初始化虚拟内存系统
-
-但是在 `setup_vm_final();` (`riscv/mm/init.c`)里面的这一行中
-
-```
-//	if (end >= __pa(PAGE_OFFSET) + memory_limit)
-//		end = __pa(PAGE_OFFSET) + memory_limit;
-```
-
-`	for_each_mem_range(i, &start, &end) ` 宏
-
-```
-#define for_each_mem_range(i, p_start, p_end)                                  \
-	__for_each_mem_range (i, &memblock.memory, NULL, NUMA_NO_NODE,         \
-			      MEMBLOCK_HOTPLUG, p_start, p_end, NULL)
-
-// Expands to
-for (i = 0, __next_mem_range(&i, (-1), MEMBLOCK_HOTPLUG, &memblock.memory,
-			     ((void *)0), &start, &end, ((void *)0));
-     i != (u64)(~0ULL);
-     __next_mem_range(&i, (-1), MEMBLOCK_HOTPLUG, &memblock.memory, ((void *)0),
-		      &start, &end, ((void *)0)))
-```
-遍历!
-
-Ebreak 调试大法
-
-```
-asm volatile (
-    "mv a0, %0\n\t"    // 将 start 的值加载到 a0 寄存器
-    "mv a1, %1\n\t"    // 将 end 的值加载到 a1 寄存器
-    "ebreak"           // 执行 ebreak 指令
-    :
-    : "r"(start), "r"(end) // 输入操作数：将 start 和 end 传递给寄存器
-    : "a0", "a1"       // 声明 a0 和 a1 寄存器会被修改
-);
-```
-
-### Linux 内核在哪里调用了 nemu-uart 的初始化函数?
+#### Linux 内核在哪里调用了 nemu-uart 的初始化函数?
 
 已经比较晚了, 之前应该调用更早的 earlycon 来传递 log
 ```
@@ -760,6 +796,7 @@ asm volatile (
 ```
 
 ### 某些细节
+>TODO:这里需要大规模重构!
 
 Ecall 的时候 mtval 清零
 
@@ -779,7 +816,6 @@ Ecall 的时候 mtval 清零
 #3  0x80c01904 in init_IRQ () at arch/riscv/kernel/irq.c:23
 ```
 
-
 草了, 发现 opensbi 改了我的设备树! ->又被 copy-paste code 给害了
 
 ```c
@@ -792,39 +828,6 @@ if (hartid < 0) {
 要保证 plic 的父节点是一个 cpu 核心, 不然 plic 就加载不起来
 
 
-### 思考: 设备树是如何解析调用驱动的?
-
-看了一下 `drivers/of/fdt.c`, 里面的 `early_init_dt_scan_nodes`,
-
-```c
-void __init early_init_dt_scan_nodes(void)
-{
-	int rc = 0;
-
-	/* Initialize {size,address}-cells info */
-	of_scan_flat_dt(early_init_dt_scan_root, NULL);
-
-	/* Retrieve various information from the /chosen node */
-	rc = of_scan_flat_dt(early_init_dt_scan_chosen, boot_command_line);
-	if (!rc)
-		pr_warn("No chosen node found, continuing without\n");
-
-	/* Setup memory, calling early_init_dt_add_memory_arch */
-	of_scan_flat_dt(early_init_dt_scan_memory, NULL);
-
-	/* Handle linux,usable-memory-range property */
-	early_init_dt_check_for_usable_mem_range();
-}
-```
-似乎在这里只初始化内存, 不初始化设备?=>是的
-
-### 没有日志输出(menuconfig 里面没有开, 我是🤡)?
-
-```
-Kernel hacking-> printk and dmesg options
-
-→ General setup → Configure standard kernel features (expert users) -> Enable support for printk  
-```
 ### 向文件系统进发!我们需要一个 initramfs
 
 之前的内容跑到这里就说明成功了
@@ -837,24 +840,6 @@ Kernel hacking-> printk and dmesg options
 ```
 -> General setup -> Initial RAM filesystem and RAM disk (initramfs/initrd) support 
 ```
-### Rubbish
-
-经过排查, 发现是 `for_each_mem_range` 压根就没执行! `__next_mem_range` 第一次就反回了 0, 正在排查原因
-
-一件奇怪的事情: 似乎 `FDT` 要放在指定的位置
-在
-
-发现虚拟地址转换后的结果为 `0x8021c000`，而正确的是 `0x8001c000`
-
-一个
-
-```
-create_pgd_mapping(early_pg_dir, fix_fdt_va,
-		   pa, MAX_FDT_SIZE, PAGE_KERNEL);
-		   
-0x3e200000 -> 0x80000000
-```
-
 
 ### PLIC 的适配
 
