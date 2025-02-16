@@ -2,7 +2,7 @@
 # Port-Linux-on-NEMU
 ## About
 
-正在尝试整理笔记, 目前内容非常流水帐
+正在尝试整理笔记, 目前内容非常流水帐,目前linux部分的内容完全没整理
 
 ## 启动 linux 的多种方式
 
@@ -544,11 +544,11 @@ __tty_alloc_driver
 内核似乎一直不调用 tty 输出函数，发现是没有实现一些关键函数和 config
 
 参考:
-[`kernel_docs/low_level_serial_api->uart_ops`](https://docs.kernel.org/driver-api/serial/driver.html)
-[`kernel_docs/core-api/genericirq->request_irq()`](https://docs.kernel.org/core-api/genericirq.html)
-[`kernel_docs/driver-api/tty_buffer->tty_insert_flip_char/tty_flip_buffer_push`](https://docs.kernel.org/driver-api/tty/tty_buffer.html)
-[`kernel_docs/driver-api/console->console`](https://docs.kernel.org/driver-api/tty/console.html#console)
-[`kernel_docs/driver-api/infra->`](https://docs.kernel.org/driver-api/infrastructure.html)
+- [`kernel_docs/low_level_serial_api->uart_ops`](https://docs.kernel.org/driver-api/serial/driver.html)
+- [`kernel_docs/core-api/genericirq->request_irq()`](https://docs.kernel.org/core-api/genericirq.html)
+- [`kernel_docs/driver-api/tty_buffer->tty_insert_flip_char/tty_flip_buffer_push`](https://docs.kernel.org/driver-api/tty/tty_buffer.html)
+- [`kernel_docs/driver-api/console->console`](https://docs.kernel.org/driver-api/tty/console.html#console)
+- [`kernel_docs/driver-api/infra->`](https://docs.kernel.org/driver-api/infrastructure.html)
 
 https://docs.kernel.org/devicetree/kernel-api.html
 https://docs.kernel.org/devicetree/usage-model.html
@@ -556,8 +556,8 @@ https://docs.kernel.org/arch/arm/interrupts.html#interrupts
 https://www.kernel.org/doc/Documentation/driver-model/platform.txt
 
 Uart-lite
-[`uartlite's dt`](https://www.kernel.org/doc/Documentation/devicetree/bindings/serial/xlnx%2Copb-uartlite.txt)
-[`uartlite's docs`](https://docs.amd.com/v/u/en-US/pg142-axi-uartlite)
+- [`uartlite's dt`](https://www.kernel.org/doc/Documentation/devicetree/bindings/serial/xlnx%2Copb-uartlite.txt)
+- [`uartlite's docs`](https://docs.amd.com/v/u/en-US/pg142-axi-uartlite)
 
 
 ### 思考: opensbi 是如何把设备树地址传递给 linux 的
