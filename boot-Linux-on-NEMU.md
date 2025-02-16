@@ -4,6 +4,14 @@
 
 正在尝试整理笔记, 目前内容非常流水帐,目前linux部分的内容完全没整理
 
+也可以参考[`CommandBlock老师的教程`](https://github.com/CmdBlockZQG/rvcore-mini-linux)
+
+### 打开方式
+
+建议先完成:
+- `NEMU PA` 全部内容
+- 阅读`Opensbi`和`riscv spec volum II`
+
 ## 启动 linux 的多种方式
 
 - `fsbl->opensbi->linux`
@@ -327,9 +335,51 @@ int isa_exec_once(Decode *s) {
 
 ## Linux!
 
-> TODO:好像从 linux 内核 `6.x` 开始 `menuconfig` 就没有 `riscv32编译选项了`？
+> TODO:好像从 linux 内核 `6.x` 开始 `menuconfig` 就没有 `riscv32编译选项了`,比较建议拉取5.xx的版本 Update:Allow no-portable kernel 开启就可以了
 
 建议先从 `defconfig` 改动, 而不是 `tinyconfig` 改动, 先把 linux 跑起来再说
+
+>TODO:哪里需要改?
+
+### 还是想从`tinyconfig`开始修改?
+
+- 你需要尽量启用完整的debug支持,特别是`earlycon`,`printk`
+- 你需要启用`uart`和`plic`的驱动
+
+这里提供一个参考的配置方案(基于tinyconfig)
+
+```
+//启用printk的支持(用于打印log)
+→ General setup → Configure standard kernel features (expert users) -> Enable support for printk
+//启用并选择一个initramfs的内核文件 
+→ General setup->Initial RAM filesystem and RAM disk (initramfs/initrd) support
+→ Platform type ->Base ISA 
+//关闭了这个才能关闭compressed instructions
+→ Boot options -> UEFI runtime support 
+→ Platform type->Emit compressed instructions when building Linux  
+→ Kernel hacking → printk and dmesg options->Show timing information on printks 
+→ Kernel hacking → Compile-time checks and compiler options -> Compile the kernel with debug info 
+→ Device Drivers → Character devices ->Enable TTY -> Early console using RISC-V SBI
+→ Device Drivers → Character devices ->Enable TTY ->  NEMU uartlite serial port support   
+→ Executable file formats->Kernel support for scripts starting with #! 
+→ Device Drivers → IRQ chip support->SiFive Platform-Level Interrupt Controller
+```
+
+### 编译linux
+
+`make ARCH=riscv CROSS_COMPILE=riscv32-unknown-linux-gnu- -j $(nproc)`
+
+会编译出`vmlinux`
+
+>TODO:PATH
+
+### 来自虚拟内存的问候NO.1
+
+如果你在这时候使用`objdump`尝试反编译`vmlinux`的内容,你会发现linux被链接到了`0xC0000000`的位置,这和我们将要把代码放置的位置不同!
+先别急,这是正常现象,如果你的`riscv`模拟器实现正确,linux可以正常运行
+为什么?不妨加一个trace自行探索试试看?
+
+>hint:linux内核中异常!=错误,只有无法处理的异常==错误
 
 ### 统计 linux 需要多少 csr
 
@@ -398,6 +448,38 @@ CSR.
 #2  0x8091d2d8 in panic (fmt=fmt@entry=0x81410b78 <payload_bin+12651384> "\0014RISC-V system with no 'timebase-frequency' in DTS\n")
     at kernel/panic.c:443
 ```
+
+### 再次提醒:基础设施
+
+rv手册里面存在非常多的细节,没有difftest的话很可能会存在一个地方实现错误!
+gdb可以极大地加强你的调试体验
+
+#### 来自虚拟内存的问候NO.1
+
+linux启动早期会开启MMU,MMU的实现会导致gdb远程调试出现bug(无法正确扫描内存导致`info src`出现异常),所以需要特殊处理,有两个方法:
+- 在gdb扫描内存的时候执行`page table walk`
+- (不推荐,地址有问题可能会触发linux的`BUG_ON`宏或者导致设备树读取失败)修改`linux`的`Makefile`,把`PAGE_OFFSET`设置成和加载地址一样的数值,这样可以保证kernel的虚拟地址和物理地址相等
+
+#### 测试你的基础设施
+
+用gdb远程调试给linux打一个断点,看看是否能够正常停下来,`info src`能不能正常定位到源代码
+
+### 输出第一条信息
+
+回想我们笔记本的linux启动的时候会有很多调试信息,在linux出现问题的时候能给我们很大的提示,但是,serial驱动的初始化往往在linux内核初始化的很晚的阶段,那怎么看早期的log呢?
+
+当我们想到这个问题的时候,大概率有人想过了,这就是OpenSBI提供的`earlycon`功能,如果启用了这个功能以后,linux的输出会经过一次`ecall`以后跳转到Opensbi后然后由Opensbi输出
+
+#### 启用linux的earlycon
+
+确保在menuconfig里面勾选了earlycon功能,并且给linux传递了`earlycon=sbi`作为启动参数(可以通过设备树传递,也可以临时在menuconfig里面指定(` → Boot options->Built-in kernel command line `))
+
+```
+[    0.000000] Linux version 5.15.178 (seeker@miLaptop) (riscv64-unknown-linux-gnu-gcc (GCC) 13.2.0, GNU ld (GNU Binutils) 2.41) #138 SMP Sat Feb 15 16:19:35 HKT 2025
+```
+
+#### 来自虚拟内存的问候NO.2
+
 ### Kernel 跑着跑着 hit good (bad) trap 了?
 
 看汇编发现指令中混入了一个 ebreak!
@@ -904,20 +986,7 @@ walk: load_slow_path_intrapage->translate->walk
 ```
 
 
-#### tinyconfig 做修改->最小化内核
-```
-→ General setup → Configure standard kernel features (expert users) -> Enable support for printk 
-→ General setup->Initial RAM filesystem and RAM disk (initramfs/initrd) support
-→ Platform type ->Base ISA 
-→ Boot options -> UEFI runtime support 
-→ Platform type->Emit compressed instructions when building Linux  
-→ Kernel hacking → printk and dmesg options->Show timing information on printks 
-→ Kernel hacking → Compile-time checks and compiler options -> Compile the kernel with debug info 
-→ Device Drivers → Character devices ->Enable TTY -> Early console using RISC-V SBI
-→ Device Drivers → Character devices ->Enable TTY ->  NEMU uartlite serial port support   
-→ Executable file formats->Kernel support for scripts starting with #! 
-→ Device Drivers → IRQ chip support->SiFive Platform-Level Interrupt Controller
-```
+
 
 ## 为什么不跑一个发行版呢?
 
