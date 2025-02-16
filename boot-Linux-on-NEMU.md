@@ -16,6 +16,8 @@ PR is always welcome here.
 
 ### 打开方式
 
+>rv32
+
 建议先完成:
 - `NEMU PA` 全部内容
 - 阅读`Opensbi`和`RISCV Spec Volume II, ch 1,2,3,10`
@@ -210,7 +212,7 @@ void difftest_step_raise(uint64_t NO) {
 
 ### 设置 `Makefile` 的参数
 
-```
+```Makefile
 PLATFORM_RISCV_XLEN = 32
 PLATFORM_RISCV_ABI = ilp32
 PLATFORM_RISCV_ISA = rv32ima_zicsr_zifencei
@@ -393,30 +395,54 @@ int isa_exec_once(Decode *s) {
 
 在[`kernel.org`](https://www.kernel.org/)下载linux内核源码
 
-> linux 内核 `6.x` 开始 `menuconfig` 默认不显示 `riscv32`的编译选项了,需要勾选(Allow configurations that result in non-portable kernels),我拉取5.xx的版本
+> linux 内核 `6.x` 开始 `menuconfig` 默认不显示 `riscv32`的编译选项了,需要勾选(Allow configurations that result in non-portable kernels),我拉取5.15的版本
+
+### 配置linux
 
 建议先从 `defconfig` 改动, 而不是 `tinyconfig` 改动, 先把 linux 跑起来再说
 
-### `defconfig`需要修改的地方
+虽然提供了具体的配置方案,但还是建议大家自己好好看看kernel 有哪些配制
+`make ARCH=riscv CROSS_COMPILE=riscv32-unknown-linux-gnu- (defconfig/menuconfig/tinyconfig)`
 
->TODO:哪里需要改?
+#### 基于`defconfig`的参考配置方案
 
-### 还是想从`tinyconfig`开始修改?
+>TODO:check!-isok?
+
+```
+//设置initramfs的文件((可以先不填)如果不填kernel会默认拿一个空文件)
+→ General setup->Initial RAM filesystem and RAM disk (initramfs/initrd) support(填自己的Initramfs source file(s))
+→ Platform type ->Base ISA (RV32I)
+//关闭了这个才能关闭compressed instructions
+→ Boot options -> UEFI runtime support (n)
+→ Platform type->Emit compressed instructions when building Linux  (n)
+→ Platform type->FPU support(n)
+→ Device Drivers → Character devices → Serial drivers -> NEMU uartlite serial port support (y)(自己写的驱动)
+//在vmlinux里面加入调试信息,提升调试体验
+→ Kernel hacking → Compile-time checks and compiler options->Compile the kernel with debug info (y)
+```
+
+#### 还是想从`tinyconfig`开始修改?
 
 - 你需要尽量启用完整的debug支持,特别是`earlycon`,`printk`
 - 你需要启用`uart`和`plic`的驱动
 
-这里提供一个参考的配置方案(基于tinyconfig)
+##### 我们最小需要什么?
+
+- 串口输出支持
+- 中断支持(for `uart` 输入)
+- 一些debug支持(`printk`,`early-console`等)
+- Riscv32IMA架构
+
+##### 一个基于`tinyconfig`实现最小化配制的参考方案
 
 ```
 //启用printk的支持(用于打印log)
-→ General setup → Configure standard kernel features (expert users) -> Enable support for printk
+→ General setup → Configure standard kernel features (expert users) -> Enable support for printk(n)
 //启用并选择一个initramfs的内核文件 
-→ General setup->Initial RAM filesystem and RAM disk (initramfs/initrd) support
-→ Platform type ->Base ISA 
-//关闭了这个才能关闭compressed instructions
-→ Boot options -> UEFI runtime support 
-→ Platform type->Emit compressed instructions when building Linux  
+→ General setup->Initial RAM filesystem and RAM disk (initramfs/initrd) support(y)(填自己的Initramfs source file(s))
+→ Platform type ->Base ISA (RV32I)
+→ Boot options -> UEFI runtime support (n)
+→ Platform type->Emit compressed instructions when building Linux  (n)
 → Kernel hacking → printk and dmesg options->Show timing information on printks 
 → Kernel hacking → Compile-time checks and compiler options -> Compile the kernel with debug info 
 → Device Drivers → Character devices ->Enable TTY -> Early console using RISC-V SBI
@@ -427,15 +453,28 @@ int isa_exec_once(Decode *s) {
 
 ### linux的打开方式
 
->TODO:如何科学地阅读linux的源代码?代码跳转等等
+#### 基础设施
+
+- 可以配置一个好用的`clangd`,支持代码跳转/宏展开等功能
+- NEMU接入gdb,边调试边理解
+- 觉得每次传参数太麻烦了?->写一个Makefile!
+- 让gdb可以调试Spike的代码->默认情况下,直接使用gdb是无法调试作为difftest-ref的spike的,这是因为在`nemu/tools/spike-diff/Makefile`里面有一个替换指令`sed -i -e 's/-g -O2/-O2/' $@`
+
+#### linux源代码结构
+
+>TODO:!!!
 
 ### 编译linux
 
 `make ARCH=riscv CROSS_COMPILE=riscv32-unknown-linux-gnu- -j $(nproc)`
 
-会编译出`vmlinux`
+会编译出:
+- `./vmlinux`linux的elf文件
+- `./arch/riscv/boot/Image`二进制文件,作为`Opensbi`的payload
 
->TODO:PATH
+### 来自虚拟内存的问候NO.1
+
+>TODO:riscv是支持硬件自动替换tlb的
 
 ### 来自虚拟内存的问候NO.1
 
@@ -513,7 +552,7 @@ gdb可以极大地加强你的调试体验,你不会喜欢一直使用printk调�
 
 ~~ebrak调试大法~~(别学)
 
-```
+```c
 asm volatile (
     "mv a0, %0\n\t"    // 将 start 的值加载到 a0 寄存器
     "mv a1, %1\n\t"    // 将 end 的值加载到 a1 寄存器
@@ -607,7 +646,7 @@ void __init create_pgd_mapping(pgd_t *pgdp,
 
 为什么会 call ebreak: 因为有 BUG_ON 宏触发了, 通常是 menuconfig 有问题
 
-```
+```c
 BUG_ON((PAGE_OFFSET % PGDIR_SIZE) != 0);
 
 BUG_ON()
@@ -646,6 +685,7 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 - [`sifive-hifive的 devicetree(for PLIC)`](https://github.com/riscv-non-isa/riscv-device-tree-doc/blob/master/examples/sifive-hifive_unleashed-microsemi.dts)
 
 需要有什么:
+>TODO:修改!
 ```
         +---------------------------+
         |         Root Node         | / {
@@ -683,7 +723,7 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 
 >如何确定这块地址是不是设备树->可以扫描内存看看魔数对不对
 
-```
+```asm
 #ifdef CONFIG_BUILTIN_DTB
 	la a0, __dtb_start
 #else
@@ -701,7 +741,7 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 
 你需要给这里达一个断点,来检测设备树是否读取成功
 
-```
+```c
 status = early_init_dt_verify(params);
 if (!status)
 	return false;
@@ -716,11 +756,11 @@ if (!status)
 这里建议按照[`Opensbi官方仓库里面的fpga/ariane`](https://github.com/riscv-software-src/opensbi/blob/master/platform/fpga/ariane/objects.mk)的makefile来配制`FW_PAYLOAD_FDT_ADDR`,`FW_PAYLOAD_OFFSET`,`FW_PAYLOAD_ALIGN`等参数
 
 linux的代码:
-```
+```c
 	dtb_early_va = (void *)fix_fdt_va + (dtb_pa & (PMD_SIZE - 1));
 ```
 我认为需要显式对齐的代码:
-```
+```c
 	dtb_early_va = (void *)(fix_fdt_va & ~(PMD_SIZE-1) ) + (dtb_pa & (PMD_SIZE - 1));
 ```
 
@@ -886,7 +926,14 @@ if (hartid < 0) {
 
 ### 向文件系统进发!我们需要一个 initramfs
 
-之前的内容跑到这里就说明成功了
+更多资料可以参考
+- [`gentoo wiki1`](https://wiki.gentoo.org/wiki/Initramfs/Guide)
+- [`gentoo wiki2`](https://wiki.gentoo.org/wiki/Initramfs_-_make_your_own)
+
+之前的内容跑到这里就说明成功了,接下来就需要一个文件系统了
+
+>TODO:可以详细记录一下为什么要文件系统,以及initramfs在真实系统中的作用!
+
 ```
 #2  0x8091d1f4 in panic (
     fmt=fmt@entry=0x81410748 <payload_bin+12650312> "No working init found.  Try passing init= option to kernel. See Linux Documentation/admin-guide/init.rst for guidance.") at kernel/panic.c:443
@@ -897,10 +944,94 @@ if (hartid < 0) {
 -> General setup -> Initial RAM filesystem and RAM disk (initramfs/initrd) support 
 ```
 
+```bash
+//TODO:这里去查一下相关规定
+mkdir --parents /usr/src/initramfs/{bin,dev,etc,lib,lib64,mnt/root,proc,root,sbin,sys,run}
+```
+
+#### 测试程序是否能正常加载
+
+可以先用c写一个死循环程序,用工具链静态编译以后打包进`initramfs`里面，之后给kernel传递`init=xxx`参数,让kernel运行init
+
+```bash
+riscv32-unknown-linux-gnu-gcc -static -o init init.c
+```
+
+诶,page fault了?
+>hint:异常!=错误
+
+#### difftest又报错了?
+
+该读文档了!
+>TODO:is that right?
+```
+The Svade extension: when a virtual page is accessed and the A bit is clear, or is written and the D
+bit is clear, a page-fault exception is raised.
+```
+
+riscv页表的脏位检查->他允许硬件替换, 也允许软件替换 
+
+在nemu中就直接抛异常让软件来实现就行了
+
+参考Spike的代码:
+```c
+reg_t ad = PTE_A | ((type == STORE) * PTE_D);
+
+if ((pte & ad) != ad) {
+  if (hade) {
+    // set accessed and possibly dirty bits.
+    pte_store(pte_paddr, pte | ad, addr, virt, type, vm.ptesize);
+  } else {
+    // take exception if access or possibly dirty bit is not set.
+    break;
+  }
+}
+```
+
+#### 编译交叉工具链
+
+Busybox 和 newlib 兼容性不太好, 如果工具链用了 newlib 会找不到头文件
+
+如果传递了 `--enable-multilib` 可能会导致编译出的标准库包含 c 拓展的指令,从而导致最后静态链接的elf文件包含压缩指令
+
+推荐的编译选项:
+```bash
+./configure --prefix=/opt/riscv --with-arch=rv32ima --with-abi=ilp32
+make linux
+```
+
+### Initramfs 的打包
+
+可以先写一个死循环来测试, 然后再 initscript 
+
+**init要有执行权限！**
+
+```bash
+(cd initramfs-root && find . | cpio -o --format=newc | gzip > ../initramfs.cpio.gz)
+```
+
+### 编译 `busybox`
+
+```bash
+make CROSS_COMPILE=riscv32-unknown-linux-gnu- ARCH=riscv  CONFIG_PREFIX=/root/initramfs meuconfig
+make CROSS_COMPILE=riscv32-unknown-linux-gnu- ARCH=riscv  CONFIG_PREFIX=/root/initramfs install
+```
+
+#### 创建`init`脚本
+
+需要先开启kernel的init脚本的支持
+
+```
+→ Executable file formats->Kernel support for scripts starting with #! 
+```
+
+具体可以参考各路wiki,在这里我们可以简化,直接启动一个sh就行了
+
 ### PLIC 的适配
 
+参考：
 - [`PLIC Spec`](https://github.com/riscv/riscv-plic-spec/blob/master/riscv-plic.adoc)
-- [`sifive plic`](https://static.dev.sifive.com/U54-MC-RVCoreIP.pdf)
+- [`sifive PLIC Spec`](https://static.dev.sifive.com/U54-MC-RVCoreIP.pdf)
 
 PLIC(Platform-Level Interrupt Controller) 用来管理外部设备中断，协调多个外部中断源, 分配优先级, 抢占, 屏蔽, 路由, 完成通知,...
 > TODO: 细化Plic 是什么,什么时候需要 PLIC
@@ -978,54 +1109,6 @@ Uart中断传送到PLIC->设置pendingbit->抛出异常(M/S external interrupt)-
 `mie` & `mip`?
 ![20250215_19h10m54s_grim.png](./attachments/20250215_19h10m54s_grim.png)
 
-
-### 交叉工具链
-Busybox 和 newlib 兼容性不太好, 如果工具链用了 newlib 会找不到头文件
-
-如果传递了 `--enable-multilib` 可能会编译出 c 拓展的指令
-
-正确的编译选项
-```
-//right!
-./configure --prefix=/opt/riscv1 --with-arch=rv32ima --with-abi=ilp32
-make linux
-```
-### Initramfs 的打包
-
-可以先写一个死循环来测试, 然后再 initscript 
-
-Init 要有执行权限！
-```
-//TODO:这里去查一下相关规定
-mkdir --parents /usr/src/initramfs/{bin,dev,etc,lib,lib64,mnt/root,proc,root,sbin,sys,run}
-
-(cd initramfs-root && find . | cpio -o --format=newc | gzip > ../initramfs.cpio.gz)
-```
-### 编译 `busybox`
-```
-make CROSS_COMPILE=riscv32-unknown-linux-gnu- ARCH=riscv  CONFIG_PREFIX=/root/initramfs install
-```
-Difftest 问题:
-TODO: 脏位检查?!?
-
-这里 riscv 有一个细节: 他允许硬件替换, 也允许软件替换 
-(hade)???
-```
-reg_t ad = PTE_A | ((type == STORE) * PTE_D);
-
-if ((pte & ad) != ad) {
-  if (hade) {
-    // set accessed and possibly dirty bits.
-    pte_store(pte_paddr, pte | ad, addr, virt, type, vm.ptesize);
-  } else {
-    // take exception if access or possibly dirty bit is not set.
-    break;
-  }
-}
-```
-```
-walk: load_slow_path_intrapage->translate->walk
-```
 
 
 
