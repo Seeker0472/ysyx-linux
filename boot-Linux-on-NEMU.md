@@ -4,13 +4,21 @@
 
 正在尝试整理笔记, 目前内容非常流水帐,目前linux部分的内容完全没整理
 
-也可以参考[`CommandBlock老师的教程`](https://github.com/CmdBlockZQG/rvcore-mini-linux)
+也可以参考
+- [`CommandBlock老师的教程`](https://github.com/CmdBlockZQG/rvcore-mini-linux)
+- [`quand_star 进阶`](https://github.com/arch-simulator-sig/quard-star-tutorial-2021)
+
+## Proposal: Let's build this Document together!🚀
+
+发现问题/有好的建议欢迎提PR!
+
+PR is always welcome here.
 
 ### 打开方式
 
 建议先完成:
 - `NEMU PA` 全部内容
-- 阅读`Opensbi`和`riscv spec volum II`
+- 阅读`Opensbi`和`RISCV Spec Volume II, ch 1,2,3,10`
 
 #### 启动linux和启动nanos-lite的区别
 
@@ -24,7 +32,7 @@
 
 在 nemu 上都不用实现 fsbl, 所以可以选择最简单的方法: `opensbi->linux`
 
-> 可以参考 `fpga/arine`
+> 可以参考 Opensbi repo里面的 `fpga/arine`
 ### About OpenSBI
 
 > "硅基大陆的宪法仍在，城邦却铸造着各自的货币"
@@ -91,17 +99,24 @@ Opensbi 在启动的过程中就会尝试给很多 csr 寄存器写数值, 然�
 
 ##### 比较有意思的事情
 
-- 是先 fetch->dedode->放进 icache 里面, 感觉这样能比较高效地利用程序的局部性来加速!
-- Decode 使用了查找表加速!
-- Instndecode-> `processor.cc->illegal_instruction` 使用 try-catch
-- 有一些寄存器有 MASK (在 `csrrs.cc` 中)
+- 取指的时候先 fetch->dedode->放进 icache 里面, 利用程序的局部性来实现加速.
+- Decode 使用了查找表
+- 对于各种异常(非法指令,page fault)等使用了try-catch处理
+- 某些寄存器的一些位没有完全实现,对这些寄存器的读写有 MASK (在 `csrrs.cc` 中)
 - 指令的实现在 `riscv/insns/*.h` 中
 
-#### 同步 nemu/spike
-回想起之前手册的内容, 访问没有实现的 CSR 寄存器的时候会抛出 Illegal Instruction Fault,
-那么我们就修改 Spike 的代码直接让执行这条指令的时候同步抛出这个异常就行了
+#### 对访问不存在的csr寄存器的时候
 
-所有 csr 指令都会首先 get_csr, 如果 csr 不存在就抛异常, 所以只要在不打算实现的 csr 上抛出一个异常就行了
+回想起之前手册的内容, 访问没有实现的 CSR 寄存器的时候会抛出 Illegal Instruction Fault,
+
+我们有很多方法来处理
+- 和访问设备的处理方式一样,把nemu的寄存器复制进Spike,但这样不太好
+- 让Spike在访问nemu未实现的寄存器的时候同步抛一个`illegal instruction fault`
+
+那么我们就需要修改Spike的代码了
+
+在spike中,所有 csr 指令都会首先 get_csr, 如果 csr 不存在就抛异常, 所以只要在不打算实现的 csr 上抛出一个异常就行了
+
 ```c
 bool difftest_dut_csr_notexist = false;
 
@@ -127,9 +142,13 @@ reg_t processor_t::get_csr(int which, insn_t insn, bool write, bool peek)
   throw trap_illegal_instruction(insn.bits());
 }
 ```
-##### WARN: 不要使用 `ref_difftest_raise_intr`
+##### WARN: 不要使用 `ref_difftest_raise_intr`来实现上述功能
 
+`ref_difftest_raise_intr`是用来实现中断的,只会设置异常号跳转到异常处理程序
+
+但是`illegal instruction fault`存在"副作用",会对多个csr寄存器做修改,所以**不要使用下面的方案**
 ```c
+//不要使用下面的方案!
 void difftest_step_raise(uint64_t NO) {
 //step
   ref_difftest_exec(1);
@@ -140,23 +159,37 @@ void difftest_step_raise(uint64_t NO) {
   ref_difftest_regcpy(&cpu, DIFFTEST_TO_REF);
 }
 ```
-有副作用的!
 
 #### 实现 difftest_csr
 
-- 修改了 `difftest_init` 的 api, 传入需要 diff 的 csr 的索引数组
-- 怎加了一个 diff-csr 的 api, 把 csr 的内容按照数组的顺序反回
+- 修改 `difftest_init` 的 api, 传入需要 diff 的 csr 的索引数组
+- 每次diff的时候只传输需要diff的csr
+- 借助宏定义,就可以实现在nemu实现一个csr的同时自动给这个csr做diff
 - 宏真好用 ()
 
 ### 接入 gdb
 
-使用 lxy 大佬分享的项目可以轻松实现, 经过了一些小改动, 甚至可以传 target descx
+使用[`mini-gdbstub`](https://github.com/RinHizakura/mini-gdbstub)项目可以很轻松在nemu里面接入gdb-server
+
+#### 进阶操作
+
+##### 给gdb传送target description文件来实现对csr的读取
+
+具体参考往期分享会
+
+##### 结合tmux实现自动分屏
 
 `tmux split-window -h -p 65 "riscv64-unknown-linux-gnu-gdb -ex \"target remote localhost:1234\" $(ELF)"`
 
+##### 自动读取符号表
+
 `ELFS :='-ex \"set confirm off\" -ex \"symbol-file ${PWD}/opensbi/build/platform/nemu/firmware/fw_payload.elf\" -ex \"add-symbol-file ${PWD}/linux/vmlinux\" -ex \"set confirm on\"'`
 
-## 技术选型
+##### 使用socket加速
+
+参考该项目github pr页面
+
+## 我自己的技术选型
 
 **非常不建议完全按照我的方法走!**
 
@@ -165,8 +198,8 @@ void difftest_step_raise(uint64_t NO) {
 
 ~~然后写 `linux-uart` 驱动的时候发现自己小看了 `linux` 的复杂程度 (:-~~
 
+其实 nemu 的 uart 可以轻松修改兼容标准的`UART16550`,具体RTFSC.
 
-写到 PLIC 的时候才发现 nemu 的 uart 可以轻松修改兼容标准
 ## 移植 `Opensbi` 
 
 主要参考了 `opensbi/docs/platform_guide.md` ,但是,如果 `nemu` 模拟了 `UART16550` 的话, 其实更推荐使用 Opensbi 官方提供的 [`Generic Platform`](https://github.com/riscv-software-src/opensbi/blob/master/docs/platform/generic.md) ,根据官网介绍可以直接按照设备树来自行加载驱动
@@ -176,6 +209,7 @@ void difftest_step_raise(uint64_t NO) {
 从 `platform/template` 里面复制然后稍作修改
 
 ### 设置 `Makefile` 的参数
+
 ```
 PLATFORM_RISCV_XLEN = 32
 PLATFORM_RISCV_ABI = ilp32
@@ -188,15 +222,25 @@ FW_JUMP=y
 FW_TEXT_START=0x80000000
 FW_JUMP_ADDR=0x0
 ```
-这里可以先把 `FW_JUMP_ADDR` 设置成 0, 如果执行 `mret` 之后跳转到了 0 就说明 ` opensbi ` 执行完了
+
+这里可以先使用`JUMP`模式,把 `FW_JUMP_ADDR` 设置成 0, 如果执行 `mret` 之后跳转到了 0 就说明 ` opensbi ` 执行完了,后续我们跑linux的时候再使用`PAYLOAD`模式。
+
+你接下来需要在开启difftest的情况下正常跑到`mret`的地方.
+
+编译:
 
 ```
 make CROSS_COMPILE=riscv64-unknown-linux-gnu- PLATFORM=nemu
 ```
+
 生成的二进制文件: `./build/platform/nemu/firmware/fw_jump.bin`
 
+>后续开启PAYLOAD以后二进制文件就是`fw_payload.bin`了
+
 ### 让 `opensbi` 正常输出字符 (适配 `nemu-uart` )
+
 主要参考 `int uart8250_init(unsigned long base, u32 in_freq, u32 baudrate, u32 reg_shift,u32 reg_width, u32 reg_offset)` 这个函数的代码, 主要要调用 `sbi_console_set_device` `sbi_domain_root_add_memrange` 这两个函数, 然后自己实现一个 `nemu-uart` 的驱动, 这样就能看到字符的正常输出了
+
 ```c
 static int uart_getch(void)
 {
@@ -229,20 +273,25 @@ static int platform_early_init(bool cold_boot)
 ```
 
 如果实现比较正常, 那么你应该能看见输出信息 (要么是 `Opensbi` 的欢迎界面, 要么是 `Opensbi` 报错某个寄存器没有实现)
+
 ```
 system_opcode_insn: Failed to access CSR 0x104 from M-mode
 sbi_trap_error: hart0: trap0: illegal instruction handler failed (error -1)
 ```
+
 ### 阅读 `Opensbi` 的源码
 
-`sbi_csr_detect.h/csr_read_allowed//csr_write_allowed` 检测寄存器是否支持读写!
-`sbi_hart` 里面 `hart_detect_features` 会检测平台支持的寄存器是否存在等, 它包括异常处理, 允许后续恢复现场
+如果提前看了 opensbi 的汇编代码, 会发现 `csr_read_num` 等函数里面有很多 `csr` 寄存器, 但其实不一定都要实现
 
-如果看了 opensbi 的汇编代码, 会发现 `csr_read_num` 等函数里面有很多 `csr` 寄存器, 但其实不一定都要实现
+这是因为:在启动过程中,Opensbi会先注册一个特殊的中断处理程序,然后对很多个寄存器尝试写入,如果这个寄存器硬件没有实现,那么就会跳转到它的中断处理程序里面,如果这个寄存器是必须的,那Opensbi就会抛出一个异常,如果是可选实现,那么就会继续执行,并在之后不使用这个寄存器
+
+可以参考下面的代码:
+- `sbi_csr_detect.h/csr_read_allowed//csr_write_allowed` 检测寄存器是否支持读写!
+- `sbi_hart` 里面 `hart_detect_features` 会检测平台支持的寄存器是否存在等, 它包括异常处理, 允许后续恢复现场
 
 ### 向 `nemu` 添加更多的寄存器
 
-我不选择"一口气把所有手册中定义的 csr 全部实现"因为感觉会陷入名为<细节>的黑洞
+我不选择"一口气把所有手册中定义的 csr 全部实现"因为感觉会陷入名为<细节>的黑洞:要实现很多非必须的csr的功能
 
 听北京基地的某位大佬说香山的 `nemu` 的 `csr` 实现的非常巧妙, 感兴趣可以参考, 但我没看 (:-
 
@@ -312,20 +361,23 @@ NEMU_mie->value = xxx;
 > TODO: 这是不是 UB?
 
 #### 寄存器的细节
+
 指令运行执行过程中**当前正在执行的指令直接触发**的异常一般是**同步异常（Synchronous Exception）**, 要立刻阻塞当前的指令执行流, 并且指令本身不应该产生其他的副作用。
-`word_t isa_raise_intr(word_t NO, vaddr_t epc)` didn't work!
-当然我们可以用一个参数来表示是否成功, 但是
-考虑这一个指令
+
+所以`word_t isa_raise_intr(word_t NO, vaddr_t epc)` didn't work!
+当然我们可以用一个参数来表示是否成功, 但是,考虑这一个指令
 `INSTPAT("??????? ????? ????? 001 ????? 11100 11", csrrw , I, R(rd)=CSRR(imm&0xfff,s);CSRW(imm&0xfff,s)=src1);`
+
 可能会发生什么呢?
 - 访问的 csr 不存在, 抛出 illegal instruction fault
 - 没有权限访问 csr, 抛出 illegal instruction fault
 - 取指过程中出现 page fault, 抛出Instruction page fault
 对于 L/S, 还可能会抛出 `Load page fault` / `Store/AMO page fault`
+
 这么多不同的地方会抛出这么多不同的错误, 这也太不"优雅"了!
 所以 Spike 选择用 try-catch, 但是我们的 c 没有😭
 
-回忆 15-213 ,老师似乎讲过一个 none-local-jump 的东西, 允许程序直接从一个很深的调用栈里面直接跳出跳转到某个位置, 查询资料, 找到了 `set-jump` 函数, 完美地满足了我的要求
+回忆 15-213 ,老师似乎讲过一个 none-local-jump 的东西, 允许程序直接从一个很深的调用栈里面直接跳出跳转到某个位置, 查询资料, 找到了 `set-jump` 函数, 虽然有性能的损失,但也能满足我们的需求。
 
 ```c
 int isa_exec_once(Decode *s) {
@@ -337,11 +389,15 @@ int isa_exec_once(Decode *s) {
 }
 ```
 
-## Linux!
+## 向LinuxKernel进发!
 
-> TODO:好像从 linux 内核 `6.x` 开始 `menuconfig` 就没有 `riscv32编译选项了`,比较建议拉取5.xx的版本 Update:Allow no-portable kernel 开启就可以了
+在[`kernel.org`](https://www.kernel.org/)下载linux内核源码
+
+> linux 内核 `6.x` 开始 `menuconfig` 默认不显示 `riscv32`的编译选项了,需要勾选(Allow configurations that result in non-portable kernels),我拉取5.xx的版本
 
 建议先从 `defconfig` 改动, 而不是 `tinyconfig` 改动, 先把 linux 跑起来再说
+
+### `defconfig`需要修改的地方
 
 >TODO:哪里需要改?
 
@@ -843,7 +899,8 @@ if (hartid < 0) {
 
 ### PLIC 的适配
 
-[`PLIC Spec`](https://github.com/riscv/riscv-plic-spec/blob/master/riscv-plic.adoc)
+- [`PLIC Spec`](https://github.com/riscv/riscv-plic-spec/blob/master/riscv-plic.adoc)
+- [`sifive plic`](https://static.dev.sifive.com/U54-MC-RVCoreIP.pdf)
 
 PLIC(Platform-Level Interrupt Controller) 用来管理外部设备中断，协调多个外部中断源, 分配优先级, 抢占, 屏蔽, 路由, 完成通知,...
 > TODO: 细化Plic 是什么,什么时候需要 PLIC
