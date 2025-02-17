@@ -22,11 +22,11 @@ PR is always welcome here.
 - `NEMU PA` 全部内容
 - 阅读`Opensbi`和`RISCV Spec Volume II, ch 1,2,3,10`
 
-#### 启动linux和启动nanos-lite的区别
+#### 启动`linux kernel` 和启动`nanos-lite`的区别
 
 >TODO:!
 
-## 启动 linux 的多种方式
+## 启动 `linux kernel` 的多种方式
 
 - `fsbl->opensbi->linux`
 - `fsbl->opensbi->u-boot->linux`
@@ -34,19 +34,19 @@ PR is always welcome here.
 
 在 nemu 上都不用实现 fsbl, 所以可以选择最简单的方法: `opensbi->linux`
 
-> 可以参考 Opensbi repo里面的 `fpga/arine`
+> 可以参考 `Opensbi repo`里面的 `fpga/arine`
 ### About OpenSBI
 
 > "硅基大陆的宪法仍在，城邦却铸造着各自的货币"
 
 提供标准SBI接口、隔离硬件访问
 
-1.虽然有统一的标准, 但是不同RISC-V硬件实现的差异还是太多了, 比如用多少个 `pmp` 寄存器, 相关硬件的早期初始化都不一样, opensbi 就是负责启动早期的工作的
+1.虽然有统一的标准, 但是不同`RISC-V`硬件实现的差异还是太多了, 比如用多少个 `pmp` 寄存器, 相关硬件的早期初始化都不一样, `opensbi`就是负责启动早期的工作的
 
 2.抽象和安全
 当计算机世界一个东西变得足够复杂的时候, 就创建一个抽象层来简化它
 
-所以启动带 mmu 的 linux 一定要用 opensbi
+所以启动带 mmu 的 `kernel` 一定要用 `opensbi`
 
 ![](./attachments/20250215_19h25m26s_grim.png)
 
@@ -82,7 +82,7 @@ Opensbi 在启动的过程中就会尝试给很多 csr 寄存器写数值, 然�
 
 ### 思考: 我们需要实现哪些 `csr`?
 
-如果目标仅仅是<我要把 `linux` 正常跑起来>的话
+如果目标仅仅是<我要把 `kernel` 正常跑起来>的话
 
 - 首先排除所有拓展
 - 排除和安全相关的 `csr`
@@ -173,15 +173,15 @@ void difftest_step_raise(uint64_t NO) {
 
 >TODO:ecall 的时候追踪不到
 
-使用[`mini-gdbstub`](https://github.com/RinHizakura/mini-gdbstub)项目可以很轻松在nemu里面接入gdb-server
+使用[`mini-gdbstub`](https://github.com/RinHizakura/mini-gdbstub)项目可以很轻松在`nemu`里面接入`gdb-server`
 
 #### 进阶操作
 
-##### 给gdb传送target description文件来实现对csr的读取
+##### 给`gdb`传送`target description`文件来实现对csr的读取
 
 具体参考往期分享会
 
-##### 结合tmux实现自动分屏
+##### 结合`tmux`实现自动分屏
 
 `tmux split-window -h -p 65 "riscv64-unknown-linux-gnu-gdb -ex \"target remote localhost:1234\" $(ELF)"`
 
@@ -189,17 +189,17 @@ void difftest_step_raise(uint64_t NO) {
 
 `ELFS :='-ex \"set confirm off\" -ex \"symbol-file ${PWD}/opensbi/build/platform/nemu/firmware/fw_payload.elf\" -ex \"add-symbol-file ${PWD}/linux/vmlinux\" -ex \"set confirm on\"'`
 
-##### 使用socket加速
+##### 使用`socket`加速
 
-参考该项目github pr页面
+参考该项目[`github pr#5`](https://github.com/RinHizakura/mini-gdbstub/pull/5)
 
 ### 添加trace
 
-为了更加深入理解linux的行为,可以考虑添加:
-- 异常/中断的trace
-- 设备(PLIC)的trace
-- MMU的trace
-- ecall的trace
+为了更加深入理解`linux kernel`的行为,可以考虑添加:
+- 异常/中断的`trace`
+- 设备(`PLIC`)的`trace`
+- `MMU`的`trace`
+- `ecall`的`trace`
 
 ## 我自己的技术选型
 
@@ -208,9 +208,9 @@ void difftest_step_raise(uint64_t NO) {
 一开始在感觉*给 `NEMU` “移植” ` linux ` 的过程中用`NEMU`来模拟硬件的行为是不是怪怪的*
 所以我选择了不改动 `nemu` 的实现 (比如 ` uart `) ,而是给 `opensbi` / `linux` 写驱动 (但这样会花很多时间)
 
-~~然后写 `linux-uart` 驱动的时候发现自己小看了 `linux` 的复杂程度 (:-~~
+~~然后写 `linux-uart` 驱动的时候发现自己小看了 `linux kernel` 的复杂程度 (:-~~
 
-其实 nemu 的 uart 可以轻松修改兼容标准的`UART16550`,具体RTFSC.
+其实 nemu 的 uart 可以轻松修改兼容标准的`UART16550`,具体`RTFSC`.
 
 ## 移植 `Opensbi` 
 
@@ -407,9 +407,9 @@ int isa_exec_once(Decode *s) {
 
 > linux 内核 `6.x` 开始 `menuconfig` 默认不显示 `riscv32`的编译选项了,需要勾选(Allow configurations that result in non-portable kernels),我拉取5.15的版本
 
-### 配置linux
+### 配置kernel
 
-建议先从 `defconfig` 改动, 而不是 `tinyconfig` 改动, 先把 linux 跑起来再说
+建议先从 `defconfig` 改动, 而不是 `tinyconfig` 改动, 先把 `kernel` 跑起来再说
 
 虽然提供了具体的配置方案,但还是建议大家自己好好看看kernel 有哪些配制
 `make ARCH=riscv CROSS_COMPILE=riscv32-unknown-linux-gnu- (defconfig/menuconfig/tinyconfig)`
@@ -459,7 +459,7 @@ int isa_exec_once(Decode *s) {
 → Device Drivers → IRQ chip support->SiFive Platform-Level Interrupt Controller
 ```
 
-### linux的打开方式
+### `linux kernel`的打开方式
 
 #### 基础设施
 
@@ -468,12 +468,12 @@ int isa_exec_once(Decode *s) {
 - 觉得每次传参数太麻烦了?->写一个Makefile!
 - 让gdb可以调试Spike的代码->默认情况下,直接使用gdb是无法调试作为difftest-ref的spike的,这是因为在`nemu/tools/spike-diff/Makefile`里面有一个替换指令`sed -i -e 's/-g -O2/-O2/' $@`
 
-### 编译linux
+### 编译`kernel`
 
 `make ARCH=riscv CROSS_COMPILE=riscv32-unknown-linux-gnu- -j $(nproc)`
 
 会编译出:
-- `./vmlinux`linux的elf文件
+- `./vmlinux` `kernel`的elf文件
 - `./arch/riscv/boot/Image`二进制文件,作为`Opensbi`的payload
 
 ### 来自虚拟内存的问候NO.1
@@ -492,15 +492,15 @@ extension to M-mode.
 
 ### 来自虚拟内存的问候NO.1
 
-如果你在这时候使用`objdump`尝试反编译`vmlinux`的内容,你会发现linux被链接到了`0xC0000000`的位置,这和我们将要把代码放置的位置不同!
-先别急,这是正常现象,如果你的`riscv`模拟器实现正确,linux可以正常运行
+如果你在这时候使用`objdump`尝试反编译`vmlinux`的内容,你会发现`kernel`被链接到了`0xC0000000`的位置,这和我们将要把代码放置的位置不同!
+先别急,这是正常现象,如果你的`riscv`模拟器实现正确,`kernel`完全可以正常运行
 为什么?不妨加一个trace自行探索试试看?
 
 >hint:linux内核中异常!=错误,只有无法处理的异常==错误
 
-### 统计 linux 需要多少 csr
+### 统计 kernel 需要多少 csr
 
-为啥不先看看 linux 访问了那些寄存器呢?
+为啥不先看看 `kernel` 访问了那些寄存器呢?
 
 但注意:有一个 time (timeh) 寄存器反汇编出来的指令是 rdtime/rdtimeh
 
@@ -557,7 +557,7 @@ CSR.
 
 ### 再次提醒:基础设施
 
-linux的报错输出依赖关键csr寄存器的实现正确,但是csr实现的细节很繁杂,没有difftest的话很可能会存在某些地方实现错误!
+`kernel` 的报错输出依赖关键csr寄存器的实现正确,但是csr实现的细节很繁杂,没有difftest的话很可能会存在某些地方实现错误!
 
 #### gdb大法好
 
@@ -593,21 +593,21 @@ gdb好用的地方之一:可以读取函数调用的`backtrace`和参数,如果�
 
 #### 来自虚拟内存的问候NO.1
 
-linux启动早期会开启MMU,MMU的实现会导致gdb远程调试出现bug(无法正确扫描内存导致`info src`出现异常),所以需要特殊处理,有两个方法:
+`kernel`启动早期会开启MMU,MMU的实现会导致gdb远程调试出现bug(无法正确扫描内存导致`info src`出现异常),所以需要特殊处理,有两个方法:
 - 在gdb扫描内存的时候执行`page table walk`
-- (不推荐,地址有问题可能会触发linux的`BUG_ON`宏或者导致设备树读取失败)修改`linux`的`Makefile`,把`PAGE_OFFSET`设置成和加载地址一样的数值,这样可以保证kernel的虚拟地址和物理地址相等
+- (不推荐,地址有问题可能会触发`kernel`的`BUG_ON`宏或者导致设备树读取失败)修改`linux kernel`的`Makefile`,把`PAGE_OFFSET`设置成和加载地址一样的数值,这样可以保证kernel的虚拟地址和物理地址相等
 
 #### 测试你的基础设施
 
-用gdb远程调试给linux打一个断点,看看是否能够正常停下来,`info src`能不能正常定位到源代码
+用gdb远程调试给`kernel`打一个断点,看看是否能够正常停下来,`info src`能不能正常定位到源代码
 
 ### 输出第一条信息
 
-回想我们笔记本的linux启动的时候会有很多调试信息,在linux出现问题的时候能给我们很大的提示,但是,serial驱动的初始化往往在linux内核初始化的很晚的阶段,那怎么看早期的log呢?
+回想我们笔记本的linux启动的时候会有很多调试信息,在linux出现问题的时候能给我们很大的提示,但是,serial驱动的初始化往往在`kernel`初始化的很晚的阶段,那怎么看早期的log呢?
 
-当我们想到这个问题的时候,大概率有人想过了,这就是OpenSBI提供的`earlycon`功能,如果启用了这个功能以后,linux的输出会经过一次`ecall`以后跳转到Opensbi后然后由Opensbi输出
+当我们想到这个问题的时候,大概率有人想过了,这就是OpenSBI提供的`earlycon`功能,如果启用了这个功能以后,`kernel`的输出会经过一次`ecall`以后跳转到Opensbi后然后由Opensbi输出
 
-#### 启用linux的printk的支持
+#### 启用`kernel`的printk的支持
 
 建议检查一下printk的选项有没有开,如果printk没有开那么不会输出log!
 
@@ -617,9 +617,9 @@ Kernel hacking-> printk and dmesg options
 → General setup → Configure standard kernel features (expert users) -> Enable support for printk  
 ```
 
-#### 启用linux的earlycon
+#### 启用`kernel`的`earlycon`
 
-确保在menuconfig里面勾选了earlycon功能,并且给linux传递了`earlycon=sbi`作为启动参数(可以通过设备树传递,也可以临时在menuconfig里面指定(` → Boot options->Built-in kernel command line `))
+确保在menuconfig里面勾选了earlycon功能,并且给`kernel`传递了`earlycon=sbi`作为启动参数(可以通过设备树传递,也可以临时在menuconfig里面指定(` → Boot options->Built-in kernel command line `))
 
 ```
 [    0.000000] Linux version 5.15.178 (seeker@miLaptop) (riscv64-unknown-linux-gnu-gcc (GCC) 13.2.0, GNU ld (GNU Binutils) 2.41) #138 SMP Sat Feb 15 16:19:35 HKT 2025
@@ -627,9 +627,9 @@ Kernel hacking-> printk and dmesg options
 
 #### 来自虚拟内存的问候NO.2
 
-遇到了问题正在阅读linuxmmu的源代码?
+遇到了问题正在阅读linux kernel mmu的源代码?
 
-但是如果阅读linux的源代码,会发现一个奇怪的逻辑
+但是如果阅读`kernel`源代码,会发现一个奇怪的逻辑
 
 ```c
 
@@ -727,13 +727,13 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
                +---------------+
 ```
 
-#### 来自虚拟内存的问候NO.3:opensbi 是如何把设备树地址传递给 linux 的
+#### 来自虚拟内存的问候NO.3:opensbi 是如何把设备树地址传递给 `kernel` 的
 
-如果你尝试调试linux内核中访问设备树的部分,你会发现:linux访问设备树时候访问的是`0x3e200000`附近的地址
+如果你尝试调试`kernel`中访问设备树的部分,你会发现:`kernel`访问设备树时候访问的是`0x3e200000`附近的地址
 
 这个地址是怎么来的呢?
 
-根据手册规定,设备树地址应该放在a1寄存器传递给linux
+根据手册规定,设备树地址应该放在a1寄存器传递给`kernel`
 
 >如何确定这块地址是不是设备树->可以扫描内存看看魔数对不对
 
@@ -769,7 +769,7 @@ if (!status)
 
 这里建议按照[`Opensbi官方仓库里面的fpga/ariane`](https://github.com/riscv-software-src/opensbi/blob/master/platform/fpga/ariane/objects.mk)的makefile来配制`FW_PAYLOAD_FDT_ADDR`,`FW_PAYLOAD_OFFSET`,`FW_PAYLOAD_ALIGN`等参数
 
-linux的代码:
+`kernel`的代码:
 ```c
 	dtb_early_va = (void *)fix_fdt_va + (dtb_pa & (PMD_SIZE - 1));
 ```
