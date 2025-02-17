@@ -2,7 +2,7 @@
 # Port-Linux-on-NEMU
 ## About
 
-正在尝试整理笔记, 目前内容非常流水帐,目前linux部分的内容完全没整理
+正在尝试整理笔记, 目前内容非常流水帐,目前设备树,驱动,中断处理还没整理
 
 也可以参考
 - [`CommandBlock老师的教程`](https://github.com/CmdBlockZQG/rvcore-mini-linux)
@@ -16,15 +16,19 @@ PR is always welcome here.
 
 ### 打开方式
 
->rv32
-
 建议先完成:
 - `NEMU PA` 全部内容
 - 阅读`Opensbi`和`RISCV Spec Volume II, ch 1,2,3,10`
 
+由于笔者的NEMU的架构是`riscv32`,这篇文章的很多Tips可能只适合与`riscv32`架构,但是从生态的角度来讲,`riscv64gc`的生态会非常好,建议大家优先考虑实现`riscv64gc`
+
+如果`NEMU`实现的足够优雅是可以通过`menuconfig`来切换`rv32`/`rv64`,但显然我没有😭
+
 #### 启动`linux kernel` 和启动`nanos-lite`的区别
 
->TODO:!
+- `Nanos-lite`的实现不是很规范,比如在`M-mod`下启用虚拟内存,也没有实现`S-Mod`
+- 从硬件(`NEMU`)的角度来说,Linux的规模更大,如果实现有问题更能体现出来
+- `Nanos-lite`是我们自己写硬件+软件,如果硬件有BUG可以在软件上加一个workaround()
 
 ## 启动 `linux kernel` 的多种方式
 
@@ -171,9 +175,13 @@ void difftest_step_raise(uint64_t NO) {
 
 ### 接入 gdb
 
->TODO:ecall 的时候追踪不到
-
 使用[`mini-gdbstub`](https://github.com/RinHizakura/mini-gdbstub)项目可以很轻松在`nemu`里面接入`gdb-server`
+
+#### 有待解决的问题
+
+如果仔细测试`mini-gdbstub`的实现,你会发现虽然`mini-gdbstub`虽然实现了`stepi`函数,但gdb并不会调用它!gdb的每次step都是在下一条指令的位置打一个断点,然后`continue`,这会导致对`ecall``step`的话有问题,无法step进异常处理程序.
+
+猜测是init的时候给gdb传的参数有问题.
 
 #### 进阶操作
 
