@@ -504,7 +504,6 @@ extension to M-mode.
 
 但注意:有一个 time (timeh) 寄存器反汇编出来的指令是 rdtime/rdtimeh
 
-> TODO: 内部中断和外部中断
 
 首先 Objdump 出 `vmlinux` 的内容, 然后可以写一个简单的 Python 脚本来统计总共访问了哪些 csr 寄存器
 
@@ -691,7 +690,6 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 
 > TODO: 详细写一下设备树的理解
 
-> TODO: 核内的中断控制器(DT)真实存在?
 
 第一次学设备树会觉得很抽象, 其实可以直接额参考文档/其他设备的 example
 设备"树"有很多种写法, 和 `json` 很像, 但也有区别
@@ -967,9 +965,9 @@ if (hartid < 0) {
 ```
 -> General setup -> Initial RAM filesystem and RAM disk (initramfs/initrd) support 
 ```
+首先,我们需要创建[`linux的目录结构`](https://en.wikipedia.org/wiki/Filesystem_Hierarchy_Standard)
 
 ```bash
-//TODO:这里去查一下相关规定
 mkdir --parents /usr/src/initramfs/{bin,dev,etc,lib,lib64,mnt/root,proc,root,sbin,sys,run}
 ```
 
@@ -1014,9 +1012,11 @@ if ((pte & ad) != ad) {
 
 #### 编译交叉工具链
 
-如果传递了 `--enable-multilib` 可能会导致编译出的标准库包含 c 拓展的指令,从而导致最后静态链接的elf文件包含压缩指令
+之前编译Opensbi和kernel的时候其实没有链接`glibc`,现在在编译用户程序的时候就需要一个带`glibc`的工具链支持了,可以自行编译[`riscv-gnu-toolchain`](https://github.com/riscv-collab/riscv-gnu-toolchain)
 
-因为`--enable-multilib`会默认用rv32gc来编译标准库
+因为`--enable-multilib`会默认用rv32gc来编译标准库,如果传递了 `--enable-multilib` 可能会导致编译出的标准库包含 c 拓展的指令,从而导致最后静态链接的elf文件包含压缩指令
+
+可以先用静态链接的方式编译`init/busybox`
 
 虽然在大多数情况下可以正常运行,但是静态编译链接glibc是非常不推荐的[`参考StackOverflow`](https://stackoverflow.com/questions/57476533/why-is-statically-linking-glibc-discouraged)
 
@@ -1029,7 +1029,7 @@ make linux
 
 ##### 有关`newlib`和`musl`库
 
-不要尝试使用`musl`和`newlib`
+不建议尝试使用`musl`和`newlib`
 
 截至目前,`newlib`上游只适配了`x86-linux`
 
@@ -1067,7 +1067,7 @@ Use it on	Linux x86 (32/64), ARM (32/64), MIPS (32/64), PowerPC (32/64), S390X, 
 **init要有执行权限！**
 
 ```bash
-(cd initramfs-root && find . | cpio -o --format=newc | gzip > ../initramfs.cpio.gz)
+(cd initramfs && find . | cpio -o --format=newc | gzip > ../initramfs.cpio.gz)
 ```
 
 ### 编译 `busybox`
@@ -1113,21 +1113,40 @@ busybox里面有platform-spec的适配代码,通过检查[`gcc 的 System-specif
 
 具体可以参考各路wiki,在这里我们可以简化,直接启动一个sh就行了
 
-### PLIC 的适配
+
+### 实现串口的输出
+
+如果之前一切顺利,那应该能看见`kernel`运行了`init`脚本的内容,并且最终执行了`/bin/sh`
+
+之后我们当然想要输入,支持输入的话就要中断的支持了,在riscv中,外部的中断需要一个统一的中断控制器来管理,这个中断控制器可以协调多个外部中断源, 实现分配优先级, 抢占, 屏蔽, 路由, 完成通知,...这就是PLIC(Platform-Level Interrupt Controller)
+
+> TODO: 内部中断和外部中断
+> TODO:思考, plic 也是通过一根线链接到 cpu 的吗, 和 timer intr 有什么区别？
+> TODO: 核内的中断控制器(DT)真实存在?
+
+#### 实现更强的终端支持
+
+在nemu中,我们直接把输出打印到控制台,但是log也会打印到控制台,输入/输出/Log全部混在一起并不是一个明知的选择,所以我采用了[`伪终端(pseudoterminal)`](https://linux.die.net/man/7/pty),创建一个伪终端,通过screen链接这个伪终端来和nemu交互
+
+写了一个[`最小化实现的例子`](https://github.com/Seeker0472/ysyx-linux)
+
+##### 一个未解之谜
+
+如果没有一个`client`(比如`screen`)连接上这个pyt消费掉`master`(nemu)存进去的数据的话,输出的内容会在下一次读取的时候读取出来,我就让`ptyinit`的时候等待`client`链接(详细参考我的例子)
+
+#### PLIC 的适配
 
 参考：
 - [`PLIC Spec`](https://github.com/riscv/riscv-plic-spec/blob/master/riscv-plic.adoc)
 - [`sifive PLIC Spec`](https://static.dev.sifive.com/U54-MC-RVCoreIP.pdf)
 
-PLIC(Platform-Level Interrupt Controller) 用来管理外部设备中断，协调多个外部中断源, 分配优先级, 抢占, 屏蔽, 路由, 完成通知,...
-> TODO: 细化Plic 是什么,什么时候需要 PLIC
-
-有什么寄存器? 可以对照寄存器/图片讲
+PLIC就不写驱动了,还是老老实实实现`sive`的`PLIC`吧
 
 ![](./attachments/Pasted%20image%2020250215230008.png)
 
 
-要实现 uart 输入, 那么就必须适配中断了，首先需要修改设备树,
+需要修改uart的设备树,声明中断源和连接`plic`
+
 ```
 uart: uart@a00003f8 {
 	compatible = "seeker,nemu_uart";
@@ -1138,8 +1157,11 @@ uart: uart@a00003f8 {
 };
 ```
 
-#### 注册中断
-Probe 的时候获取中断号 (这里要判断一下是否正常, 否则等到 platform_get_irq 的时候会 fail)
+##### 注册中断
+
+要让kernel知道中断发起的时候应该调用哪个处理函数,就需要我们自己注册中断了
+
+> 其实手册提醒了: Probe 的时候获取中断号 (这里要判断一下是否正常, 否则等到 platform_get_irq 的时候会 fail)
 
 ```
 nemu_uart_port.irq = platform_get_irq(pdev, 0);
@@ -1150,11 +1172,14 @@ nemu_uart_port.irq = platform_get_irq(pdev, 0);
 ```
 int ret = request_irq(port->irq, nemu_uart_irq,
 		      IRQF_TRIGGER_RISING, "nemu_uart",
-		      port);int ret = request_irq(port->irq, nemu_uart_irq,
-		      IRQF_TRIGGER_RISING, "nemu_uart",
 		      port);
 ```
-#### 简化实现
+
+这样当中断到来的时候`kernel`就会调用`nemu_uart_irq`这个函数了
+
+具体参考[`文档`](https://docs.kernel.org/core-api/genericirq.html#c.request_irq)
+
+##### PLIC设备的实现
 
 给 plic 加一个 trace, 发现读写的地址有:
 
@@ -1162,30 +1187,22 @@ int ret = request_irq(port->irq, nemu_uart_irq,
 0xc002080->Hart 1 M-mode enables
 0xc002084->same area
 0xc201000->Hart 1 M-mode priority threshold
-
-0xc000004-> source 1 pirority（越大越好）
-
+0xc000004-> source 1 pirority
 ```
-Intr pending
 
 阅读手册, 可以知道大概的流程是
-Uart中断传送到PLIC->设置pendingbit->抛出异常(M/S external interrupt)->linux 进行异常处理 (PLIC)->claim read（claim/complete reg）(反回highest prigority or zero)->进行异常处理->结束以后(write claim/complete reg)(on success->clear pending bit)
+- Uart中断传送到PLIC
+- PLIC设置pendingbit
+- 等待时机抛出异常(M/S external interrupt)
+- linux 进行异常处理 (跳转到PLIC驱动)
+- claim 读取`claim/complete reg`(反回0或最高记别的中断)
+- linux进行跳转到对应的回调函数进行处理
+- 结束以后 写 `claim/complete reg`如果成功就清除`pengding bit`
 
-只有一个信号!
+实现PLIC的行为就很简单了
 
-- 所以需要定期读进一个 buffer, 并检查这个 buffer 非空
-- 如果检查到这个 buffer 非空, 检查是否有 disable
-- 没有 disable, 产生中断 (这时要设置 pending 和 claim/complete)
-- 检测到读信号不处理
-- 检测到写信号清除 pending claim/complete（`0x0C201004`）
 
-再简化:
-直接 fix claim/complete ,pending 
-有数据就发中断
-
-思考, plic 也是通过一根线链接到 cpu 的吗, 和 timer intr 有什么区别？
-
-### 异常处理的细节
+#### 异常处理的细节
 
 其实没有完全实现正确也能跑
 这里是目前 difftest 的框架没有办法 diff 到的地方.
@@ -1196,10 +1213,6 @@ Uart中断传送到PLIC->设置pendingbit->抛出异常(M/S external interrupt)-
 
 `mie` & `mip`?
 ![20250215_19h10m54s_grim.png](./attachments/20250215_19h10m54s_grim.png)
-
-
-
-
 
 ## 为什么不跑一个发行版呢?
 
