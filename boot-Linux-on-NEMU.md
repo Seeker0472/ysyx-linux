@@ -911,7 +911,10 @@ Uart-lite
 Ecall 的时候 mtval 清零
 
 `mstatus/sstatus` & `sie/mie` 的某些位应该是硬件上的相同 bit, 根据手册定义
-> A restricted view of mstatus appears as the sstatus register in the S-level ISA.
+ 
+```
+A restricted view of mstatus appears as the sstatus register in the S-level ISA.
+```
 
 #### 设备树被改了（TODO：为什么会修改设备树, 那两个 fixup 函数是干什么的?）!
 
@@ -943,10 +946,9 @@ if (hartid < 0) {
 更多资料可以参考
 - [`gentoo wiki1`](https://wiki.gentoo.org/wiki/Initramfs/Guide)
 - [`gentoo wiki2`](https://wiki.gentoo.org/wiki/Initramfs_-_make_your_own)
+- [`Wikipedia-InitialRAMDisk`](https://en.wikipedia.org/wiki/Initial_ramdisk)
 
 之前的内容跑到这里就说明成功了,接下来就需要一个文件系统了,
-
->TODO:可以详细记录一下为什么要文件系统,以及initramfs在真实系统中的作用!
 
 ```
 #2  0x8091d1f4 in panic (
@@ -954,17 +956,16 @@ if (hartid < 0) {
 
 ```
 
-由于NEMU中我们尚未实现磁盘,所以最好的方法是打包一个initramfs
+[`文件系统`](https://en.wikipedia.org/wiki/File_system)是操作系统给我们提供的又一层抽象.由于NEMU中我们尚未实现磁盘,所以最好的方法是打包一个initramfs
 
->真实系统的initramfs:只是启动过程中的一部分,bootloader负责把kernel和initfs加载进内存然后启动kernel,kernel会判断initfs的类型(initrd/initramfs)
-
->TODO:完善
+>真实系统的initramfs:只是启动过程中的一部分,bootloader负责把kernel和initfs加载进内存然后启动kernel,kernel会判断initfs的类型(initrd/initramfs),一般initramfs只是作为在真正的根文件系统被挂载之前的一个临时文件系统,里面存放一些被编译成"可加载的内核模块"的驱动,这样可以简化kernel的实现.
 
 需要打开initramdisk的支持,并把我们之后打包的initramfs添加进来
 
 ```
 -> General setup -> Initial RAM filesystem and RAM disk (initramfs/initrd) support 
 ```
+
 首先,我们需要创建[`linux的目录结构`](https://en.wikipedia.org/wiki/Filesystem_Hierarchy_Standard)
 
 ```bash
