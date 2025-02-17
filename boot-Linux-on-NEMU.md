@@ -1142,9 +1142,6 @@ busybox里面有platform-spec的适配代码,通过检查[`gcc 的 System-specif
 
 PLIC就不写驱动了,还是老老实实实现`sive`的`PLIC`吧
 
-![](./attachments/Pasted%20image%2020250215230008.png)
-
-
 需要修改uart的设备树,声明中断源和连接`plic`
 
 ```
@@ -1201,17 +1198,20 @@ int ret = request_irq(port->irq, nemu_uart_irq,
 
 实现PLIC的行为就很简单了
 
+![](./attachments/Pasted%20image%2020250215230008.png)
 
 #### 异常处理的细节
 
-其实没有完全实现正确也能跑
-这里是目前 difftest 的框架没有办法 diff 到的地方.
+其实没有完全实现正确可能也能跑,因为目前 difftest 的框架没有办法`diff`到中端是否应该被响应->我们`difftest`的`difftest_raise_intr(NO)`只会发起一个intr并立刻响应,并不会检查这个中断是否被屏蔽了;
 
-具体参考手册有关 `medeleg` & `mideleg`
-如何选择 M/S-Mode intr?
-默认情况下会把所有异常/中断都交给 M-Mod 处理, 然后让 M-mod 的程序来选择是自己处理还是, 但是为了提高性能, 可以把某一些中断交给 S-Mod
+所以实现的时候要仔细阅读手册
 
-`mie` & `mip`?
+中断是交给M-Mode 处理还是S-Mod处理->应该仔细阅读手册有关`medeleg` & `mideleg`的部分
+
+默认情况下会把所有异常/中断都交给 M-Mod 处理, 然后让 M-mod 的程序来选择是自己处理还是交给S-Mode的操作系统来处理, 但是为了提高性能, 可以把某一些中断委托给 S-Mod
+
+在mstatus中有全局中断使能,`mie` & `mip`有对细分的中断使能
+
 ![20250215_19h10m54s_grim.png](./attachments/20250215_19h10m54s_grim.png)
 
 ## 为什么不跑一个发行版呢?
