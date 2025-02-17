@@ -171,6 +171,8 @@ void difftest_step_raise(uint64_t NO) {
 
 ### 接入 gdb
 
+>TODO:ecall 的时候追踪不到
+
 使用[`mini-gdbstub`](https://github.com/RinHizakura/mini-gdbstub)项目可以很轻松在nemu里面接入gdb-server
 
 #### 进阶操作
@@ -190,6 +192,14 @@ void difftest_step_raise(uint64_t NO) {
 ##### 使用socket加速
 
 参考该项目github pr页面
+
+### 添加trace
+
+为了更加深入理解linux的行为,可以考虑添加:
+- 异常/中断的trace
+- 设备(PLIC)的trace
+- MMU的trace
+- ecall的trace
 
 ## 我自己的技术选型
 
@@ -406,8 +416,6 @@ int isa_exec_once(Decode *s) {
 
 #### 基于`defconfig`的参考配置方案
 
->TODO:check!-isok?
-
 ```
 //设置initramfs的文件((可以先不填)如果不填kernel会默认拿一个空文件)
 → General setup->Initial RAM filesystem and RAM disk (initramfs/initrd) support(填自己的Initramfs source file(s))
@@ -460,10 +468,6 @@ int isa_exec_once(Decode *s) {
 - 觉得每次传参数太麻烦了?->写一个Makefile!
 - 让gdb可以调试Spike的代码->默认情况下,直接使用gdb是无法调试作为difftest-ref的spike的,这是因为在`nemu/tools/spike-diff/Makefile`里面有一个替换指令`sed -i -e 's/-g -O2/-O2/' $@`
 
-#### linux源代码结构
-
->TODO:!!!
-
 ### 编译linux
 
 `make ARCH=riscv CROSS_COMPILE=riscv32-unknown-linux-gnu- -j $(nproc)`
@@ -474,7 +478,17 @@ int isa_exec_once(Decode *s) {
 
 ### 来自虚拟内存的问候NO.1
 
->TODO:riscv是支持硬件自动替换tlb的
+将软件TLB(Translation Lookaside Buffer)填充设置为可选项->在nemu中为了简化就可以不实现TLB了
+
+```
+The initial RISC-V paged virtual-memory architectures have been designed as
+straightforward implementations to support existing operating systems. We have
+architected page table layouts to support a hardware page-table walker. Software TLB
+refills are a performance bottleneck on high-performance systems, and are especially
+troublesome with decoupled specialized coprocessors. An implementation can
+choose to implement software TLB refills using a machine-mode trap handler as an
+extension to M-mode.
+```
 
 ### 来自虚拟内存的问候NO.1
 
@@ -676,6 +690,8 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 > TODO: 补上作用
 
 > TODO: 详细写一下设备树的理解
+
+> TODO: 核内的中断控制器(DT)真实存在?
 
 第一次学设备树会觉得很抽象, 其实可以直接额参考文档/其他设备的 example
 设备"树"有很多种写法, 和 `json` 很像, 但也有区别
@@ -930,7 +946,7 @@ if (hartid < 0) {
 - [`gentoo wiki1`](https://wiki.gentoo.org/wiki/Initramfs/Guide)
 - [`gentoo wiki2`](https://wiki.gentoo.org/wiki/Initramfs_-_make_your_own)
 
-之前的内容跑到这里就说明成功了,接下来就需要一个文件系统了
+之前的内容跑到这里就说明成功了,接下来就需要一个文件系统了,
 
 >TODO:可以详细记录一下为什么要文件系统,以及initramfs在真实系统中的作用!
 
@@ -939,6 +955,14 @@ if (hartid < 0) {
     fmt=fmt@entry=0x81410748 <payload_bin+12650312> "No working init found.  Try passing init= option to kernel. See Linux Documentation/admin-guide/init.rst for guidance.") at kernel/panic.c:443
 
 ```
+
+由于NEMU中我们尚未实现磁盘,所以最好的方法是打包一个initramfs
+
+>真实系统的initramfs:只是启动过程中的一部分,bootloader负责把kernel和initfs加载进内存然后启动kernel,kernel会判断initfs的类型(initrd/initramfs)
+
+>TODO:完善
+
+需要打开initramdisk的支持,并把我们之后打包的initramfs添加进来
 
 ```
 -> General setup -> Initial RAM filesystem and RAM disk (initramfs/initrd) support 
@@ -969,7 +993,7 @@ The Svade extension: when a virtual page is accessed and the A bit is clear, or 
 bit is clear, a page-fault exception is raised.
 ```
 
-riscv页表的脏位检查->他允许硬件替换, 也允许软件替换 
+riscv页表的脏位检查->允许硬件维护,同时也允许软件维护 
 
 在nemu中就直接抛异常让软件来实现就行了
 
@@ -990,15 +1014,51 @@ if ((pte & ad) != ad) {
 
 #### 编译交叉工具链
 
-Busybox 和 newlib 兼容性不太好, 如果工具链用了 newlib 会找不到头文件
-
 如果传递了 `--enable-multilib` 可能会导致编译出的标准库包含 c 拓展的指令,从而导致最后静态链接的elf文件包含压缩指令
 
+因为`--enable-multilib`会默认用rv32gc来编译标准库
+
+虽然在大多数情况下可以正常运行,但是静态编译链接glibc是非常不推荐的[`参考StackOverflow`](https://stackoverflow.com/questions/57476533/why-is-statically-linking-glibc-discouraged)
+
 推荐的编译选项:
+
 ```bash
 ./configure --prefix=/opt/riscv --with-arch=rv32ima --with-abi=ilp32
 make linux
 ```
+
+##### 有关`newlib`和`musl`库
+
+不要尝试使用`musl`和`newlib`
+
+截至目前,`newlib`上游只适配了`x86-linux`
+
+来自[`newlib官网`](https://sourceware.org/newlib/):
+
+```
+Now linux is a different animal. It is an OS that has an extensive set of syscalls. If you look in the newlib/libc/sys/linux directory, you will find a number of syscalls there (e.g. see io.c). There is a set of basic syscall macros that are defined for the particular platform. For the x86, you will find these macros defined in newlib/libc/sys/linux/machine/i386/syscall.h file. At the moment, linux support is only for x86. To add another platform, the syscall.h file would have to be supplied for the new platform plus some other platform-specific files would need to be ported as well.
+```
+
+截至目前,`musl` 上游没有支持`riscv-linux`
+
+来自[`musl官网`](https://www.musl-libc.org/intro.html)
+
+```
+Use it on	Linux x86 (32/64), ARM (32/64), MIPS (32/64), PowerPC (32/64), S390X, SuperH, Microblaze, OpenRISC
+```
+
+虽然有`riscv-newlib`和`riscv-musl`的分支, 不过也是archieve的状态了,也没必要使用没有官方支持/停止维护的东西
+
+
+##### 有关工具链的"目标三元组"
+
+[`参考`](https://wiki.osdev.org/Target_Triplet)
+
+编译生成的工具链的名称有`riscv32-unknown-linux-gnu-xxx`,`riscv32-unknown-elf-xxx`,`musl-xxx`等这些其实包含了`Target Triplet`的东西,可以通过`gcc -dumpmachine`查看
+
+`Target Triplet`的格式是`machine-vendor-operatingsystem`,详细信息可以自行STFW
+
+其中`riscv32-unknown-elf-xxx`使用Newlib的工具链,不包含`riscv-linux`系统相关的代码(比如linux的ecall)
 
 ### Initramfs 的打包
 
@@ -1015,6 +1075,32 @@ make linux
 ```bash
 make CROSS_COMPILE=riscv32-unknown-linux-gnu- ARCH=riscv  CONFIG_PREFIX=/root/initramfs meuconfig
 make CROSS_COMPILE=riscv32-unknown-linux-gnu- ARCH=riscv  CONFIG_PREFIX=/root/initramfs install
+```
+
+#### 编译busybox过程中头文件<>未找到?
+
+busybox里面有platform-spec的适配代码,通过检查[`gcc 的 System-specific Predefined Macros`](https://gcc.gnu.org/onlinedocs/cpp/System-specific-Predefined-Macros.html)
+
+在toolchain的config 里面有参数 `--enable-linux`,如果`make linux`的话会默认选中这个参数
+
+```c
+
+/* ---- Endian Detection ------------------------------------ */
+
+#include <limits.h>
+#if defined(__digital__) && defined(__unix__)
+# include <sex.h>
+#elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
+   || defined(__APPLE__)
+# include <sys/resource.h>  /* rlimit */
+# include <machine/endian.h>
+# define bswap_64 __bswap64
+# define bswap_32 __bswap32
+# define bswap_16 __bswap16
+#else
+# include <byteswap.h>
+# include <endian.h>
+#endif
 ```
 
 #### 创建`init`脚本
@@ -1069,7 +1155,9 @@ int ret = request_irq(port->irq, nemu_uart_irq,
 		      port);
 ```
 #### 简化实现
+
 给 plic 加一个 trace, 发现读写的地址有:
+
 ```
 0xc002080->Hart 1 M-mode enables
 0xc002084->same area
