@@ -2,7 +2,9 @@
 # Port-Linux-on-NEMU
 ## About
 
-正在尝试整理笔记, 目前内容非常流水帐,目前设备树,驱动,中断处理还没整理
+正在尝试整理笔记, 目前内容非常流水帐,目前设备树,驱动,还没整理
+
+这篇文章是从我的笔记整理而来,比起“讲义”更像“博客”
 
 也可以参考
 - [`CommandBlock老师的教程`](https://github.com/CmdBlockZQG/rvcore-mini-linux)
@@ -1060,7 +1062,14 @@ make linux
 来自[`newlib官网`](https://sourceware.org/newlib/):
 
 ```
-Now linux is a different animal. It is an OS that has an extensive set of syscalls. If you look in the newlib/libc/sys/linux directory, you will find a number of syscalls there (e.g. see io.c). There is a set of basic syscall macros that are defined for the particular platform. For the x86, you will find these macros defined in newlib/libc/sys/linux/machine/i386/syscall.h file. At the moment, linux support is only for x86. To add another platform, the syscall.h file would have to be supplied for the new platform plus some other platform-specific files would need to be ported as well.
+Now linux is a different animal. It is an OS that has an extensive set of syscalls. 
+If you look in the newlib/libc/sys/linux directory, you will find a number of syscalls 
+there (e.g. see io.c). There is a set of basic syscall macros that are defined 
+for the particular platform. For the x86, you will find these macros defined in
+newlib/libc/sys/linux/machine/i386/syscall.h file. At the moment, linux support 
+is only for x86. To add another platform, the syscall.h file would 
+have to be supplied for the new platform plus some other 
+platform-specific files would need to be ported as well.
 ```
 
 截至目前,`musl` 上游没有支持`riscv-linux`
@@ -1137,16 +1146,11 @@ busybox里面有platform-spec的适配代码,通过检查[`gcc 的 System-specif
 
 具体可以参考各路wiki,在这里我们可以简化,直接启动一个sh就行了
 
-
 ### 实现串口的输出
 
 如果之前一切顺利,那应该能看见`kernel`运行了`init`脚本的内容,并且最终执行了`/bin/sh`
 
 之后我们当然想要输入,支持输入的话就要中断的支持了,在riscv中,外部的中断需要一个统一的中断控制器来管理,这个中断控制器可以协调多个外部中断源, 实现分配优先级, 抢占, 屏蔽, 路由, 完成通知,...这就是PLIC(Platform-Level Interrupt Controller)
-
-> TODO: 内部中断和外部中断
-> TODO:思考, plic 也是通过一根线链接到 cpu 的吗, 和 timer intr 有什么区别？
-> TODO: 核内的中断控制器(DT)真实存在?
 
 #### 实现更强的终端支持
 
@@ -1178,11 +1182,36 @@ uart: uart@a00003f8 {
 };
 ```
 
+##### PLIC&CLINT
+
+PLIC&CLINT是两个设备,所以需要另外一根线连到处理器核,所以核内也有一个中断控制器(相信在写设备树的时候也发现了)
+
+根据riscv手册,优先中断的优先级如下
+
+```
+Multiple simultaneous interrupts destined for M-mode are handled in the following decreasing
+priority order: MEI, MSI, MTI, SEI, SSI, STI, LCOFI.
+```
+
+这里的缩写分别代表:
+- `MEI (Machine External Interrupt)`
+- `MSI (Machine Software Interrupt)`
+- `MTI (Machine Timer Interrupt)`
+- `SEI (Supervisor External Interrupt)`
+- `SSI (Supervisor Software Interrupt)`
+- `STI (Supervisor Timer Interrupt)`
+- `LCOFI (Local Custom Offload Interrupt)`
+
+这里的主要设计原则:
+- 更高特权级的中断需要先处理
+- 外部中断优先于内部中断(外部设备(比如网络I/O可能有更加严格的时间要求))
+- 软件中断优先于内部定时器中断(定时器中断一般用于时间片流转,而软件中断用于处理器间通讯,可能需要更快的响应),但软件中断在`mip`的低四位,允许单条csr指令(`csrrwi`等)直接修改
+
 ##### 注册中断
 
 要让kernel知道中断发起的时候应该调用哪个处理函数,就需要我们自己注册中断了
 
-> 其实手册提醒了: Probe 的时候获取中断号 (这里要判断一下是否正常, 否则等到 platform_get_irq 的时候会 fail)
+> 其实kernel文档提醒了: Probe 的时候获取中断号 (这里要判断一下是否正常, 否则等到 platform_get_irq 的时候会 fail)
 
 ```
 nemu_uart_port.irq = platform_get_irq(pdev, 0);
@@ -1245,21 +1274,7 @@ int ret = request_irq(port->irq, nemu_uart_irq,
 - "**What needs to be done**: Get riscv32 running somehow (fails due to bugs in qemu user mode emulation)" (from gentoo wiki)
 - fedora wiki : not even mentioned yet.
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## 迈向更安全的大厦
-
-
 
 ### PMP
 
