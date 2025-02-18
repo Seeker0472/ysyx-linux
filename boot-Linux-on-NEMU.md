@@ -86,6 +86,12 @@ Opensbi 在启动的过程中就会尝试给很多 csr 寄存器写数值, 然�
 
 `csr` 寄存器可以通过索引的高四位判断权限/RW 权限等等->硬件实现就简单了
 
+`mstatus/sstatus` & `sie/mie` 的某些位应该是硬件上的相同 bit, 根据手册定义
+ 
+```
+A restricted view of mstatus appears as the sstatus register in the S-level ISA.
+```
+
 ### 思考: 我们需要实现哪些 `csr`?
 
 如果目标仅仅是<我要把 `kernel` 正常跑起来>的话
@@ -709,6 +715,7 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 - [`k210 的 devicetree`](https://github.com/riscv-software-src/opensbi/blob/555055d14534e436073c818e04f4a5f0d3c141dc/platform/kendryte/k210/k210.dts)
 - [`野火的文档`](https://doc.embedfire.com/linux/imx6/driver/zh/latest/linux_driver/driver_tree.html)
 - [`sifive-hifive的 devicetree(for PLIC)`](https://github.com/riscv-non-isa/riscv-device-tree-doc/blob/master/examples/sifive-hifive_unleashed-microsemi.dts)
+- [`linux & DT`](https://docs.kernel.org/devicetree/usage-model.html)
 
 大概需要有什么:
 ```
@@ -836,29 +843,50 @@ void __init early_init_dt_scan_nodes(void)
 虚拟内存的映射也是根据设备树来的,在设备树读取到内存节点的时候, 会调用 `early_init_dt_add_memory_arch` 之后调用 `memblock_add` 存储地址进 `memblock.memory` 以便之后读取
 
 ### Linux 适配 nemu-uart 驱动!
-> TODO:需要大规模重构!
+
+> 由于kernel的复杂性,这里有非常多的疏漏和没讲清楚的地方
 
 主要参考 [`linux 内核 driver-api/serial/driver`](https://docs.kernel.org/driver-api/serial/driver.html#uart-ops)
-同时可以参考 [`linux 内核的 uart-lite 的驱动`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/drivers/tty/serial/uartlite.c?h=v5.15.178)
+同时可以参考 [`linux 内核的 uart-lite 的驱动`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/drivers/tty/serial/uartlite.c?h=v5.15.178),因为从代码行树来看的话,`uart-lite`是代码最少的uart驱动
 
-这一段写的台烂了, 需要大规模修改!
+启用`uart`(`nemu-uart/uartlite`)驱动的位置在 `tinyconfig→ Device Drivers → Character devices->tty->xxx`
 
-启用内核驱动的位置在 `tinyconfig→ Device Drivers → Character devices->tty->xxx`
 #### 添加 nemu-uart 驱动
 - 创建 `nemu-uart.c` 文件 
 - Kconfig 添加项 
-- Makefile 添加项
-- Menuconfig 里面勾选
-Obj-$(CONFIG_SERIAL_NEMUUART) += nemu-uart. O
-#### 如何注册一个驱动?
-使用 platform_driver 代表一个平台驱动程序, 用于管理和控制 platform_device。
+- Makefile 添加项`obj-$(CONFIG_NEMU_UART) += nemu-uart.o`
+- `menuconfig` 里面勾选驱动
 
-Linux 驱动主要包含几个结构体
+##### `kernel`驱动的组成
 
-#### 驱动如何注册?
+Linux 驱动主要包含几个结构体:
+- `console`控制台设备的接口
+- `uart_ops`定义`uart`的函数集合
+- `uart_driver`表示一个`uart`的驱动程序
+- `uart_port`表示一个具体的`uart`端口
+- `platform_driver`实现平台总线上的一个设备驱动
 
+###### 注册驱动
+
+`module_init`宏会注册模块的初始化函数,如果这个驱动被编译进`kernel`(比如我们的`nemu-uart`驱动),就会在`kernel`启动的时候被`do_initcalls()`调用
+
+```c
+module_init(nemu_uart_init);
 ```
 
+##### `uart`驱动的基本流程
+
+- 内核初始化的时候调用`do_initcalls()`
+- 调用`do_one_initcall()`调用每个注册的init函数
+- 调用nemu-uart注册的`nemu_uart_init`(初始化函数)
+- 调用`platform_driver_register`注册驱动(`nemu_uart_platform_driver`结构体)
+- 经过一系列调用调用`driver_probe_device()`,尝试把`driver`和某个`device`绑定
+- 再经过一系列函数调用进入`nemu_uart_platform_driver`注册的`nemu_uart_probe()`函数
+- `probe`函数获取内存资源/获取中断资源/映射内存/注册驱动/初始化端口/添加自旋锁
+
+> TODO:这里再细化一下?
+
+```
 static struct uart_driver nemu_uart_driver = {
 	.owner = THIS_MODULE,
 	.driver_name = DRIVER_NAME,
@@ -867,103 +895,18 @@ static struct uart_driver nemu_uart_driver = {
 	.minor = 2472,
 	.nr = 1,
 };
-
-for (curr = chrdevs[i]; curr; prev = curr, curr = curr->next) {
-	if (curr->major < major)
-		continue;
-
-	if (curr->major > major)
-		break;
-
-	if (curr->baseminor + curr->minorct <= baseminor)
-		continue;
-
-	if (curr->baseminor >= baseminor + minorct)
-		break;
-
-	goto out;
-}
-
-设备号冲突导致跑不起来
-
-太诡异了!
-tty_port_link_device
-0driver(ttydriver
-)->ports
-uart_register_driver里面初始化
-__tty_alloc_driver
-
-
-看看uart_startup
 ```
-内核似乎一直不调用 tty 输出函数，发现是没有实现一些关键函数和 config
-
-参考:
+主要的参考资料
 - [`kernel_docs/low_level_serial_api->uart_ops`](https://docs.kernel.org/driver-api/serial/driver.html)
-- [`kernel_docs/core-api/genericirq->request_irq()`](https://docs.kernel.org/core-api/genericirq.html)
-- [`kernel_docs/driver-api/tty_buffer->tty_insert_flip_char/tty_flip_buffer_push`](https://docs.kernel.org/driver-api/tty/tty_buffer.html)
 - [`kernel_docs/driver-api/console->console`](https://docs.kernel.org/driver-api/tty/console.html#console)
-- [`kernel_docs/driver-api/infra->`](https://docs.kernel.org/driver-api/infrastructure.html)
-
-https://docs.kernel.org/devicetree/kernel-api.html
-https://docs.kernel.org/devicetree/usage-model.html
-https://docs.kernel.org/arch/arm/interrupts.html#interrupts
-https://www.kernel.org/doc/Documentation/driver-model/platform.txt
 
 Uart-lite
 - [`uartlite's dt`](https://www.kernel.org/doc/Documentation/devicetree/bindings/serial/xlnx%2Copb-uartlite.txt)
 - [`uartlite's docs`](https://docs.amd.com/v/u/en-US/pg142-axi-uartlite)
 
-#### Linux 内核在哪里调用了 nemu-uart 的初始化函数?
-
-已经比较晚了, 之前应该调用更早的 earlycon 来传递 log
-```
-#0  nemu_uart_init () at drivers/tty/serial/nemu-uart.c:66
-#1  0x80c00cbc in do_one_initcall (fn=0x80c0cfe4 <nemu_uart_init>) at init/main.c:1302
-#2  0x80c01044 in do_initcall_level (command_line=0x82015610 "earlycon", level=6) at init/main.c:1375
-#3  do_initcalls () at init/main.c:1391
-#4  do_basic_setup () at init/main.c:1410
-#5  kernel_init_freeable () at init/main.c:1615
-#6  0x8092817c in kernel_init (unused=<optimized out>) at init/main.c:1506
-#7  0x80801910 in payload_bin () at arch/riscv/kernel/entry.S:232
-
-```
-
-### 某些细节
->TODO:这里需要大规模重构!
-
-Ecall 的时候 mtval 清零
-
-`mstatus/sstatus` & `sie/mie` 的某些位应该是硬件上的相同 bit, 根据手册定义
- 
-```
-A restricted view of mstatus appears as the sstatus register in the S-level ISA.
-```
-
 #### 设备树被改了（TODO：为什么会修改设备树, 那两个 fixup 函数是干什么的?）!
 
-首先发现一直卡在这个 die 函数
-```
-#6  0x80802330 in die (regs=0x81bffae0 <payload_bin+20970208>, str=0x81410c1c <payload_bin+12651548> "Oops - illegal instruction")
-    at arch/riscv/kernel/traps.c:48
-
-```
-然后查看第一次 illegal_instruction 的位置, 发现是在 `__delay` 函数, 打上断点查看是什么时候调用了 delay 函数
-```
-#3  0x80c01904 in init_IRQ () at arch/riscv/kernel/irq.c:23
-```
-
-草了, 发现 opensbi 改了我的设备树! ->又被 copy-paste code 给害了
-
-```c
-hartid = riscv_of_parent_hartid(node);
-if (hartid < 0) {
-	pr_warn("unable to find hart id for %pOF\n", node);
-	return 0;
-}
-```
-要保证 plic 的父节点是一个 cpu 核心, 不然 plic 就加载不起来
-
+发现 opensbi 改了我的设备树! ->又被 copy-paste code 给害了
 
 ### 向文件系统进发!我们需要一个 initramfs
 
@@ -1185,6 +1128,15 @@ uart: uart@a00003f8 {
 ##### PLIC&CLINT
 
 PLIC&CLINT是两个设备,所以需要另外一根线连到处理器核,所以核内也有一个中断控制器(相信在写设备树的时候也发现了)
+
+这个核内的中断控制器是必须要实现的, 不然`plic`驱动就加载不起来
+```c
+hartid = riscv_of_parent_hartid(node);
+if (hartid < 0) {
+	pr_warn("unable to find hart id for %pOF\n", node);
+	return 0;
+}
+```
 
 根据riscv手册,优先中断的优先级如下
 
