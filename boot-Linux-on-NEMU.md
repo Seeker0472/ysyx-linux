@@ -663,9 +663,9 @@ void __init create_pgd_mapping(pgd_t *pgdp,
 
 ### Kernel 跑着跑着 hit good (bad) trap 了?
 
-看汇编发现指令中混入了一个 ebreak!
+如果查看`kernel`的汇编发现指令中混入了一个 `ebreak`!
 
-为什么会 call ebreak: 因为有 BUG_ON 宏触发了, 通常是 menuconfig 有问题
+为什么会 `call ebreak`: 因为有 `BUG_ON` 等等宏触发了, 通常是 `Kconfig/Makefile` 有问题
 
 ```c
 BUG_ON((PAGE_OFFSET % PGDIR_SIZE) != 0);
@@ -681,6 +681,7 @@ BUG_ON()
 	unreachable();						\
 } while (0)
 ```
+
 ```c
 asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 {
@@ -694,45 +695,55 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 
 ### 设备树
 
-> TODO: 补上作用
+[`设备树`](https://en.wikipedia.org/wiki/Devicetree)主要是描述硬件平台设备组成和配置的数据结构,它的核心作用是将硬件信息从内核代码中分离，实现硬件描述与系统软件的解耦，从而提升系统的可移植性、可维护性和灵活性,一般由bootloader加载进内存并传递给kernel,也可以直接打包进kernel.
 
-> TODO: 详细写一下设备树的理解
-
+> x86架构并没有设备树,x86架构通过ACPI等协议自动探测硬件连接(当然也有[`riscv-ACPI`](https://github.com/riscv-non-isa/riscv-acpi-rimt))
 
 第一次学设备树会觉得很抽象, 其实可以直接额参考文档/其他设备的 example
-设备"树"有很多种写法, 和 `json` 很像, 但也有区别
+设备"树"有很多种写法, 感觉 `json` 很像, 但也有区别
+
+可以参考
 - [`elinux.org/device_tree_usage`](https://elinux.org/Device_Tree_Usage)
 - [`k210 的 devicetree`](https://github.com/riscv-software-src/opensbi/blob/555055d14534e436073c818e04f4a5f0d3c141dc/platform/kendryte/k210/k210.dts)
 - [`野火的文档`](https://doc.embedfire.com/linux/imx6/driver/zh/latest/linux_driver/driver_tree.html)
 - [`sifive-hifive的 devicetree(for PLIC)`](https://github.com/riscv-non-isa/riscv-device-tree-doc/blob/master/examples/sifive-hifive_unleashed-microsemi.dts)
 
-需要有什么:
->TODO:修改!
+大概需要有什么:
 ```
-        +---------------------------+
-        |         Root Node         | / {
-        |---------------------------|
-        | #address-cells = <1>      |
-        | #size-cells    = <1>      |
-        | compatible = "seeker_nemu"|
-        +---------------------------+
-                   |
-      +------------+-------------+-------------+------------------+
-      |            |             |             |                  |
-+----------+ +-----------+ +-------------+ +---------------+ +------------------+
-| chosen   | | cpus      | | plic0       | | uart@a00003f8 | | memory@80000000  |
-|----------| |-----------| |-------------| |---------------| |------------------|
-| bootargs | | timebase  | |@0xC000000   | | reg=0xA00003F8| | reg=0x80000000   |
-|          | | frequency | | interrupts  | | status=okay   | |   -0x87FFFFFF    |
-+----------+ |           | | extended    | +---------------+ +------------------+
-             +-----------+ +-------------+   |
-               | --------------^     ^       |
-               | cpu@0         |     |       |
-               |---------------|     |       |
-               | riscv,isa     |   +------+  |
-               | interrupts    +-->| PLIC |<-+
-               | controller    |   +------+
-               +---------------+
+             ┌─────────────────────────────┐                                                       
+             │         Root Node           │  / {                                                  
+             ├─────────────────────────────┤                                                       
+             │  #address-cells = <1>       │                                                       
+             │  #size-cells    = <1>       │                                                       
+             │  compatible = "seeker_nemu" │                                                       
+             └─────────────┬───────────────┘                                                       
+                           │                                                                       
+    ┌────────────────┬─────┴───────────────────┬───────────────────┬──────────────────┐            
+    │                │                         │                   │                  │            
+┌───▼──────┐  ┌──────▼───────────┐    ┌────────▼──────────┐ ┌──────▼─────────┐  ┌─────▼───────────┐
+│ choosen  │  │      cpus        │    │  plic0@0xC000000  │ │ uart@a00003f8  │  │ memory@80000000 │
+├──────────┤  ├──────────────────┤    ├───────────────────┤ ├────────────────┤  ├─────────────────┤
+│ bootargs │  │timebase-frequency│    │     compatible    │ │ reg=0xA00003F8 │  │ reg=0x80000000  │
+│          │  │                  │    │     riscv,ndev    │ │ status=okay    │  │   -0x87FFFFFF   │
+└──────────┘  └──────┬───────────┘    │        reg        │ └────────────────┘  └─────────────────┘
+                     │                │interrupts-extended│                                        
+              ┌──────▼────────┐       └────────────┬──────┘                                        
+              │   / cpu@0     │                    │                                               
+              ├───────────────┤                    │                                               
+              │   compatible  │                    │                                               
+              │  device_type  │                    │                                               
+              │    status     │                    │                                               
+              │   riscv,isa   │                    │                                               
+              └─────────┬─────┘                    │                                               
+                        │                          │                                               
+                     ┌──▼──────────────────┐       │                                               
+                     │      cpu0_intc      │       │                                               
+                     ├─────────────────────┤       │                                               
+                     │  #interrupt-cells   │       │                                               
+                     │     compatible      │       │                                               
+                     │interrupt-controller ◄───────┘                                               
+                     │                     │                                                       
+                     └─────────────────────┘                                                                                                         
 ```
 
 #### 来自虚拟内存的问候NO.3:opensbi 是如何把设备树地址传递给 `kernel` 的
@@ -746,6 +757,10 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 >如何确定这块地址是不是设备树->可以扫描内存看看魔数对不对
 
 ```asm
+/* Save hart ID and DTB physical address */
+	mv s0, a0
+	mv s1, a1
+...
 #ifdef CONFIG_BUILTIN_DTB
 	la a0, __dtb_start
 #else
@@ -757,11 +772,11 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 	call setup_vm
 ```
 
-之后我们追踪一下这个变量(`head.s`), 发现传递给了 ` setup_vm `,然后会映射这片内存。
+之后我们追踪一下这个变量(`head.s`), 发现传递给了 ` setup_vm `,然后会映射这片内存到`0x3e200000`附近
 
 ##### 检查设备树是否被正常加载
 
-你需要给这里达一个断点,来检测设备树是否读取成功
+你需要给这里打一个断点,来检测设备树是否读取成功
 
 ```c
 status = early_init_dt_verify(params);
@@ -773,9 +788,9 @@ if (!status)
 
 **如果你有任何想法,pr/issue is always welcomed!**
 
-如果你的设备树传递的地址没有对齐,可能会在这里设置错误的`dtb_early_va`,我没搞清楚为什么不需要显示对齐
+如果你的设备树传递的地址没有对齐,可能会在这里设置错误的`dtb_early_va`,我没搞清楚为什么不需要显式对齐
 
-这里建议按照[`Opensbi官方仓库里面的fpga/ariane`](https://github.com/riscv-software-src/opensbi/blob/master/platform/fpga/ariane/objects.mk)的makefile来配制`FW_PAYLOAD_FDT_ADDR`,`FW_PAYLOAD_OFFSET`,`FW_PAYLOAD_ALIGN`等参数
+这里建议按照[`Opensbi官方仓库里面的fpga/ariane`](https://github.com/riscv-software-src/opensbi/blob/master/platform/fpga/ariane/objects.mk)的makefile来配置`FW_PAYLOAD_FDT_ADDR`,`FW_PAYLOAD_OFFSET`,`FW_PAYLOAD_ALIGN`等参数
 
 `kernel`的代码:
 ```c
@@ -788,9 +803,9 @@ if (!status)
 
 #### 思考: 设备树是如何解析调用驱动的?
 
->TODO:细化!
+可以参考 `drivers/of/fdt.c`, 里面的 `early_init_dt_scan_nodes`,在这里面初始化内存,把设备树解析到内存里面,之后的driver_init的时候再根据设备树里面的`compatable`子段匹配驱动,然后调用对应的`probe`函数
 
-看了一下 `drivers/of/fdt.c`, 里面的 `early_init_dt_scan_nodes`,
+> TODO:考虑细化这一部分
 
 ```c
 void __init early_init_dt_scan_nodes(void)
@@ -812,8 +827,7 @@ void __init early_init_dt_scan_nodes(void)
 	early_init_dt_check_for_usable_mem_range();
 }
 ```
-> 这里应该只解析了设备树,初始化设备还在后面,但是内存(页表似乎是在这里初始化的)
-
+> 这里应该只解析了设备树,初始化设备还在后面,但是内存(页表是在这里初始化的)
 
 ##### 设备树映射虚拟内存的逻辑:
 
@@ -966,6 +980,8 @@ if (hartid < 0) {
 
 [`文件系统`](https://en.wikipedia.org/wiki/File_system)是操作系统给我们提供的又一层抽象.由于NEMU中我们尚未实现磁盘,所以最好的方法是打包一个initramfs
 
+参考[`linux文档`](https://docs.kernel.org/filesystems/ramfs-rootfs-initramfs.html#populating-initramfs),如果不指定路径,内核会使用一个空的initramfs
+
 >真实系统的initramfs:只是启动过程中的一部分,bootloader负责把kernel和initfs加载进内存然后启动kernel,kernel会判断initfs的类型(initrd/initramfs),一般initramfs只是作为在真正的根文件系统被挂载之前的一个临时文件系统,里面存放一些被编译成"可加载的内核模块"的驱动,这样可以简化kernel的实现.
 
 需要打开initramdisk的支持,并把我们之后打包的initramfs添加进来
@@ -994,13 +1010,12 @@ riscv32-unknown-linux-gnu-gcc -static -o init init.c
 #### difftest又报错了?
 
 该读文档了!
->TODO:is that right?
 ```
 The Svade extension: when a virtual page is accessed and the A bit is clear, or is written and the D
 bit is clear, a page-fault exception is raised.
 ```
 
-riscv页表的脏位检查->允许硬件维护,同时也允许软件维护 
+riscv页表的脏位检查是允许硬件维护,同时也使用一个`M-mode`拓展来允许软件维护 
 
 在nemu中就直接抛异常让软件来实现就行了
 
@@ -1242,11 +1257,13 @@ int ret = request_irq(port->irq, nemu_uart_irq,
 
 
 
-# 杂项(TODO:Delete)
+## 迈向更安全的大厦
 
 
 
-## PMP
+### PMP
+
+启动linux的时候不需要实现PMP的功能
 
 `pmp<n>cfg`: `L0A | XWR` L: locked->(addr&entry) O:reserved    A: Access Type
 
@@ -1262,63 +1279,3 @@ AccessType:
 	- Matches `pmaddr(i-1)<y<pmaddr(i)`, 如果大于则无效
 - 2->NA4 (Naturally aligned four-byte region),定义一个 **4 字节对齐** 的极小内存区域
 - 3->NAOT (Naturally aligned power-of-two region, ≥8 bytes)NAPOT 模式定义一个 **2 的幂次方大小且自然对齐** 的内存区域->看末尾有多少个 1?
-
-
-
-
-```c
-bool pmpcfg_csr_t::unlogged_write(const reg_t val) noexcept {
-	//没有实现pmp寄存器
-  if (proc->n_pmp == 0)
-    return false;
-
-  bool write_success = false;
-  //rlb和mml是mseccfg中的位,这是拓展!没有必要实现?
-  const bool rlb = state->mseccfg->get_rlb();
-  const bool mml = state->mseccfg->get_mml();
-  
-  for (size_t i0 = (address - CSR_PMPCFG0) * 4, i = i0; i < i0 + proc->get_xlen() / 8; i++) {
-    if (i < proc->n_pmp) {
-      const bool locked = (state->pmpaddr[i]->cfg & PMP_L);
-      if (rlb || !locked) {
-        uint8_t cfg = (val >> (8 * (i - i0))) & (PMP_R | PMP_W | PMP_X | PMP_A | PMP_L);
-        // Drop R=0 W=1 when MML = 0
-        // Remove the restriction when MML = 1
-        if (!mml) {
-          cfg &= ~PMP_W | ((cfg & PMP_R) ? PMP_W : 0);
-        }
-        // Disallow A=NA4 when granularity > 4
-        if (proc->lg_pmp_granularity != PMP_SHIFT && (cfg & PMP_A) == PMP_NA4)
-          cfg |= PMP_NAPOT;
-        /*
-         * Adding a rule with executable privileges that either is M-mode-only or a locked Shared-Region
-         * is not possible and such pmpcfg writes are ignored, leaving pmpcfg unchanged.
-         * This restriction can be temporarily lifted e.g. during the boot process, by setting mseccfg.RLB.
-         */
-        const bool cfgx = cfg & PMP_X;
-        const bool cfgw = cfg & PMP_W;
-        const bool cfgr = cfg & PMP_R;
-        if (rlb || !(mml && ((cfg & PMP_L)      // M-mode-only or a locked Shared-Region
-                && !(cfgx && cfgw && cfgr)      // RWX = 111 is allowed
-                && (cfgx || (cfgw && !cfgr))    // X=1 or RW=01 is not allowed
-        ))) {
-          state->pmpaddr[i]->cfg = cfg;
-        }
-      }
-      write_success = true;
-    }
-  }
-  proc->get_mmu()->flush_tlb();
-  return write_success;
-}
-
-
-```
-
-
-这是Smepmp拓展! 感觉没必要实现
-`pmpcfg` 和 `pmpaddr` 共同维护一条 PMP
-### `mseccfg.RLB`(Rule Locking Bypass)
-
-### `mseccfg.MML` (Machine Mode Lockdown)
-
