@@ -1,5 +1,6 @@
 
 # Port-Linux-on-NEMU
+
 ## About
 
 正在尝试整理笔记, 目前内容非常流水帐,目前设备树,驱动,还没整理
@@ -157,6 +158,7 @@ reg_t processor_t::get_csr(int which, insn_t insn, bool write, bool peek)
   throw trap_illegal_instruction(insn.bits());
 }
 ```
+
 ##### WARN: 不要使用 `ref_difftest_raise_intr`来实现上述功能
 
 `ref_difftest_raise_intr`是用来实现中断的,只会设置异常号跳转到异常处理程序
@@ -474,18 +476,19 @@ int isa_exec_once(Decode *s) {
 
 ```
 //启用printk的支持(用于打印log)
-→ General setup → Configure standard kernel features (expert users) -> Enable support for printk(n)
+→ General setup → Configure standard kernel features (expert users) -> Enable support for printk(y)
 //启用并选择一个initramfs的内核文件 
 → General setup->Initial RAM filesystem and RAM disk (initramfs/initrd) support(y)(填自己的Initramfs source file(s))
 → Platform type ->Base ISA (RV32I)
 → Boot options -> UEFI runtime support (n)
 → Platform type->Emit compressed instructions when building Linux  (n)
 → Kernel hacking → printk and dmesg options->Show timing information on printks 
-→ Kernel hacking → Compile-time checks and compiler options -> Compile the kernel with debug info 
-→ Device Drivers → Character devices ->Enable TTY -> Early console using RISC-V SBI
-→ Device Drivers → Character devices ->Enable TTY ->  NEMU uartlite serial port support   
-→ Executable file formats->Kernel support for scripts starting with #! 
-→ Device Drivers → IRQ chip support->SiFive Platform-Level Interrupt Controller
+→ Kernel hacking → Compile-time checks and compiler options -> Compile the kernel with debug info (y)
+→ Device Drivers → Character devices ->Enable TTY (y)
+→ Device Drivers → Character devices ->Enable TTY -> Early console using RISC-V SBI (y)
+→ Device Drivers → Character devices ->Enable TTY ->  NEMU uartlite serial port support (y)   
+→ Executable file formats->Kernel support for scripts starting with #! (y)
+→ Device Drivers → IRQ chip support->SiFive Platform-Level Interrupt Controller (y)
 ```
 
 ### `linux kernel`的打开方式
@@ -953,12 +956,18 @@ Uart-lite
 ```bash
 mkdir --parents /usr/src/initramfs/{bin,dev,etc,lib,lib64,mnt/root,proc,root,sbin,sys,run}
 ```
+
+创建控制台设备
+
+```bash
+sudo mknod rootfs/dev/console c 5 1
+```
+
 #### init 进程
 
 系统启动后由内核创建的第一个用户空间进程（PID 为 1）。它是所有其他进程的父进程或间接父进程，负责初始化系统环境、管理系统服务和守护进程的生命周期。
 
 我们的目标是在`nemu`上启动一个简单的`kernel`就行了,所以`init`进程主要的工作就是启动shell
-> TODO
 
 
 #### 测试用户空间程序是否能正常加载
