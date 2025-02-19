@@ -507,15 +507,13 @@ int isa_exec_once(Decode *s) {
 
 将软件TLB(Translation Lookaside Buffer)填充设置为可选项->在nemu中为了简化就可以不实现TLB了
 
-```
-The initial RISC-V paged virtual-memory architectures have been designed as
+> The initial RISC-V paged virtual-memory architectures have been designed as
 straightforward implementations to support existing operating systems. We have
 architected page table layouts to support a hardware page-table walker. Software TLB
 refills are a performance bottleneck on high-performance systems, and are especially
 troublesome with decoupled specialized coprocessors. An implementation can
 choose to implement software TLB refills using a machine-mode trap handler as an
 extension to M-mode.
-```
 
 ### 来自虚拟内存的问候NO.1
 
@@ -572,15 +570,13 @@ if __name__ == "__main__":
 在真实的系统中, 时钟一般不会设计成一个寄存器/csr 的形式, 因为会有多个 hart 同步/关机/动态调频的问题, 一般设计成 MMIO
 
 来自 riscv-spec
-```
-Accurate real-time clocks (RTCs) are relatively expensive to provide (requiring a crystal or
+> Accurate real-time clocks (RTCs) are relatively expensive to provide (requiring a crystal or
 MEMS oscillator) and have to run even when the rest of system is powered down, and so
 there is usually only one in a system located in a different frequency/voltage domain from
 the processors. Hence, the RTC must be shared by all the harts in a system and accesses to
 the RTC will potentially incur the penalty of a voltage-level-shifter and clock-domain
 crossing. It is thus more natural to expose mtime as a memory-mapped register than as a
 CSR.
-```
 
 ### 再次提醒:基础设施
 
@@ -967,10 +963,8 @@ riscv32-unknown-linux-gnu-gcc -static -o init init.c
 #### difftest又报错了?
 
 该读文档了!
-```
-The Svade extension: when a virtual page is accessed and the A bit is clear, or is written and the D
+> The Svade extension: when a virtual page is accessed and the A bit is clear, or is written and the D
 bit is clear, a page-fault exception is raised.
-```
 
 riscv页表的脏位检查是允许硬件维护,同时也使用一个`M-mode`拓展来允许软件维护 
 
@@ -1016,8 +1010,7 @@ make linux
 
 来自[`newlib官网`](https://sourceware.org/newlib/):
 
-```
-Now linux is a different animal. It is an OS that has an extensive set of syscalls. 
+> Now linux is a different animal. It is an OS that has an extensive set of syscalls. 
 If you look in the newlib/libc/sys/linux directory, you will find a number of syscalls 
 there (e.g. see io.c). There is a set of basic syscall macros that are defined 
 for the particular platform. For the x86, you will find these macros defined in
@@ -1025,15 +1018,12 @@ newlib/libc/sys/linux/machine/i386/syscall.h file. At the moment, linux support
 is only for x86. To add another platform, the syscall.h file would 
 have to be supplied for the new platform plus some other 
 platform-specific files would need to be ported as well.
-```
 
 截至目前,`musl` 上游没有支持`riscv-linux`
 
 来自[`musl官网`](https://www.musl-libc.org/intro.html)
 
-```
-Use it on	Linux x86 (32/64), ARM (32/64), MIPS (32/64), PowerPC (32/64), S390X, SuperH, Microblaze, OpenRISC
-```
+> Use it on	Linux x86 (32/64), ARM (32/64), MIPS (32/64), PowerPC (32/64), S390X, SuperH, Microblaze, OpenRISC
 
 虽然有`riscv-newlib`和`riscv-musl`的分支, 不过也是archieve的状态了,也没必要使用没有官方支持/停止维护的东西
 
