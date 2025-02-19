@@ -3,9 +3,11 @@
 
 ## About
 
-正在尝试整理笔记, 目前内容非常流水帐,目前设备树,驱动,还没整理
+这篇文章是从笔者的笔记整理而来, 比起“讲义”更像“博客” ,目前有许多东西都还没有完善(特别是linux driver的部分)
 
-这篇文章是从我的笔记整理而来,比起“讲义”更像“博客”
+在笔者尝试给`NEMU`移植`kernel`的时候, 感到完全无从下手(也没发现`CommandBlock`老师的教程),过程中踩了非常多的坑,于是总结了这篇笔记
+
+虽然大家更加建议的`roadmap`是`PA3,4->xv6->quardstar->linux-nommu->linux-mmu`,但笔者觉得,如果我们给`NEMU`加上了完备的基础设施(`difftest/trace/gdb`),`NEMU`比`QEMU`更能帮助我们理解`kernel`启动的流程,完全可以`PA3,4->(xv6->)linux-mmu`
 
 也可以参考
 - [`CommandBlock老师的教程`](https://github.com/CmdBlockZQG/rvcore-mini-linux)
@@ -827,8 +829,6 @@ if (!status)
 
 可以参考 `drivers/of/fdt.c`, 里面的 `early_init_dt_scan_nodes`,在这里面初始化内存,把设备树解析到内存里面,之后的driver_init的时候再根据设备树里面的`compatable`子段匹配驱动,然后调用对应的`probe`函数
 
-> TODO:考虑细化这一部分
-
 ```c
 void __init early_init_dt_scan_nodes(void)
 {
@@ -857,7 +857,7 @@ void __init early_init_dt_scan_nodes(void)
 
 ### Linux 适配 nemu-uart 驱动!
 
-> 由于kernel的复杂性,这里有非常多的疏漏和没讲清楚的地方
+> FIXME: 由于kernel的复杂性,这里有非常多的疏漏和没讲清楚的地方
 
 主要参考 [`linux 内核 driver-api/serial/driver`](https://docs.kernel.org/driver-api/serial/driver.html#uart-ops)
 同时可以参考 [`linux 内核的 uart-lite 的驱动`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/drivers/tty/serial/uartlite.c?h=v5.15.178),因为从代码行树来看的话,`uart-lite`是代码最少的uart驱动
@@ -897,8 +897,6 @@ module_init(nemu_uart_init);
 - 再经过一系列函数调用进入`nemu_uart_platform_driver`注册的`nemu_uart_probe()`函数
 - `probe`函数获取内存资源/获取中断资源/映射内存/注册驱动/初始化端口/添加自旋锁
 
-> TODO:这里再细化一下?
-
 ```
 static struct uart_driver nemu_uart_driver = {
 	.owner = THIS_MODULE,
@@ -916,10 +914,6 @@ static struct uart_driver nemu_uart_driver = {
 Uart-lite
 - [`uartlite's dt`](https://www.kernel.org/doc/Documentation/devicetree/bindings/serial/xlnx%2Copb-uartlite.txt)
 - [`uartlite's docs`](https://docs.amd.com/v/u/en-US/pg142-axi-uartlite)
-
-#### 设备树被改了（TODO：为什么会修改设备树, 那两个 fixup 函数是干什么的?）!
-
-发现 opensbi 改了我的设备树! ->又被 copy-paste code 给害了
 
 ### 向文件系统进发!我们需要一个 initramfs
 
@@ -1238,7 +1232,7 @@ int ret = request_irq(port->irq, nemu_uart_irq,
 
 中断是交给M-Mode 处理还是S-Mod处理->应该仔细阅读手册有关`medeleg` & `mideleg`的部分
 
-默认情况下会把所有异常/中断都交给 M-Mod 处理, 然后让 M-mod 的程序来选择是自己处理还是交给S-Mode的操作系统来处理, 但是为了提高性能, 可以把某一些中断委托给 S-Mod
+默认情况下会把所有异常/中断都交给 M-Mod 处理, 然后让 M-mod 的程序来选择是自己处理还是交给S-Mode的操作系统来处理, 但是为了提高性能, 可以把某一些中断/异常委托给 S-Mod (timer/pagefault/plic)
 
 在mstatus中有全局中断使能,`mie` & `mip`有对细分的中断使能
 
