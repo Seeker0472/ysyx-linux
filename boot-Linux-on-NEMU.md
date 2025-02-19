@@ -41,6 +41,7 @@ PR is always welcome here.
 在 nemu 上都不用实现 fsbl, 所以可以选择最简单的方法: `opensbi->linux`
 
 > 可以参考 `Opensbi repo`里面的 `fpga/arine`
+
 ### About OpenSBI
 
 > "硅基大陆的宪法仍在，城邦却铸造着各自的货币"
@@ -386,7 +387,17 @@ NEMU_mie->bits.STIE = xxx;
 NEMU_mie->value = xxx;
 ```
 
-> TODO: 这是不是 UB?
+当然这种写法有问题,根据标准定义,struct中的bit-filed必须被打包进同一可寻址单元的相邻域中(如果大小合适),
+- 同一单元之中的位域分配顺序(从高到低还是从低到高,由实现来决定)
+- 跨单元的行为由实现来决定
+
+> (From `ISO/IEC 9899:2024 6.7.3.2.13`)
+> An implementation may allocate any addressable storage unit large enough to hold a bit-field. If
+enough space remains, a bit-field that immediately follows another bit-field in a structure shall be
+packed into adjacent bits of the same unit. If insufficient space remains, whether a bit-field that
+does not fit is put into the next unit or overlaps adjacent units is implementation-defined. The
+order of allocation of bit-fields within a unit (high-order to low-order or low-order to high-order) is
+implementation-defined. The alignment of the addressable storage unit is unspecified.
 
 #### 寄存器的细节
 
@@ -718,6 +729,7 @@ asmlinkage void __init setup_vm(uintptr_t dtb_pa)
 - [`linux & DT`](https://docs.kernel.org/devicetree/usage-model.html)
 
 大概需要有什么:
+
 ```
              ┌─────────────────────────────┐                                                       
              │         Root Node           │  / {                                                  
