@@ -387,7 +387,7 @@ NEMU_mie->bits.STIE = xxx;
 NEMU_mie->value = xxx;
 ```
 
-当然这种写法有问题,根据标准定义,struct中的bit-filed必须被打包进同一可寻址单元的相邻域中(如果大小合适),
+当然这种写法有问题(Unspecified behavior(参考标准附录J)),根据标准定义,struct中的bit-filed必须被打包进同一可寻址单元的相邻域中(如果大小合适)但是,
 - 同一单元之中的位域分配顺序(从高到低还是从低到高,由实现来决定)
 - 跨单元的行为由实现来决定
 
@@ -431,6 +431,8 @@ int isa_exec_once(Decode *s) {
 ## 向LinuxKernel进发!
 
 在[`kernel.org`](https://www.kernel.org/)下载linux内核源码
+
+可以大致读一下[`Linux的启动流程`](https://en.wikipedia.org/wiki/Booting_process_of_Linux)
 
 > linux 内核 `6.x` 开始 `menuconfig` 默认不显示 `riscv32`的编译选项了,需要勾选(Allow configurations that result in non-portable kernels),我拉取5.15的版本
 
@@ -935,7 +937,10 @@ Uart-lite
 
 参考[`linux文档`](https://docs.kernel.org/filesystems/ramfs-rootfs-initramfs.html#populating-initramfs),如果不指定路径,内核会使用一个空的initramfs
 
->真实系统的initramfs:只是启动过程中的一部分,bootloader负责把kernel和initfs加载进内存然后启动kernel,kernel会判断initfs的类型(initrd/initramfs),一般initramfs只是作为在真正的根文件系统被挂载之前的一个临时文件系统,里面存放一些被编译成"可加载的内核模块"的驱动,这样可以简化kernel的实现.
+>真实系统的initramfs:只是启动过程中的一部分,bootloader负责把kernel和initfs加载进内存然后启动kernel,kernel会判断initfs的类型(initrd/initramfs),
+一般initramfs只是作为在真正的根文件系统被挂载之前的一个临时文件系统,里面存放一些被编译成"可加载的内核模块"的驱动,
+这样也可以简化kernel的实现,因为磁盘的实现有多种多样(可能是软件RAID, LVM, NFS...这些都需要特殊的步骤去挂载, ),但内存是简单统一的.
+再之后会调用`pivot_root()`来卸载`initramfs`并切换到真正的根文件系统
 
 需要打开initramdisk的支持,并把我们之后打包的initramfs添加进来
 
@@ -948,8 +953,17 @@ Uart-lite
 ```bash
 mkdir --parents /usr/src/initramfs/{bin,dev,etc,lib,lib64,mnt/root,proc,root,sbin,sys,run}
 ```
+#### init 进程
 
-#### 测试程序是否能正常加载
+系统启动后由内核创建的第一个用户空间进程（PID 为 1）。它是所有其他进程的父进程或间接父进程，负责初始化系统环境、管理系统服务和守护进程的生命周期。
+
+我们的目标是在`nemu`上启动一个简单的`kernel`就行了,所以`init`进程主要的工作就是启动shell
+> TODO
+
+
+#### 测试用户空间程序是否能正常加载
+
+由于`init`进程是内核启动加载的第一个进程,我们只要测试一下init能不能正常加载执行就可以了
 
 可以先用c写一个死循环程序,用工具链静态编译以后打包进`initramfs`里面，之后给kernel传递`init=xxx`参数,让kernel运行init
 
@@ -1055,11 +1069,11 @@ make CROSS_COMPILE=riscv32-unknown-linux-gnu- ARCH=riscv  CONFIG_PREFIX=/root/in
 make CROSS_COMPILE=riscv32-unknown-linux-gnu- ARCH=riscv  CONFIG_PREFIX=/root/initramfs install
 ```
 
-#### 编译busybox过程中头文件<>未找到?
+#### 编译busybox过程中头文件`<byteswap.h>`未找到?
 
 busybox里面有platform-spec的适配代码,通过检查[`gcc 的 System-specific Predefined Macros`](https://gcc.gnu.org/onlinedocs/cpp/System-specific-Predefined-Macros.html)
 
-在toolchain的config 里面有参数 `--enable-linux`,如果`make linux`的话会默认选中这个参数
+在toolchain的config 里面有参数 `--enable-linux`,如果`make linux`的话会默认选中这个参数,但如果强行传--enable-linux就链接到glibc库里面去了
 
 ```c
 
@@ -1227,6 +1241,10 @@ int ret = request_irq(port->irq, nemu_uart_irq,
 - "32-bit architectures are being killed off one-by-one, not being added." (from debian mail-list)
 - "**What needs to be done**: Get riscv32 running somehow (fails due to bugs in qemu user mode emulation)" (from gentoo wiki)
 - fedora wiki : not even mentioned yet.
+
+如果发新版支持,可以直接chroot进不同架构的rootfs[`参考`](https://unix.stackexchange.com/questions/292433/chroot-into-a-different-architecture),然后直接执行`apt install` [`大致的步骤`](https://github.com/carlosedp/riscv-bringup/blob/master/Debian-Rootfs-Guide.md)
+
+当然`rv32`也有社区支持,[`参考`](https://github.com/yuzibo/riscv32)
 
 ## 迈向更安全的大厦
 
