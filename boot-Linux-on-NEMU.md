@@ -133,7 +133,7 @@ A restricted view of mstatus appears as the sstatus register in the S-level ISA.
 
 那么我们就需要修改Spike的代码了
 
-在spike中,所有 csr 指令都会首先 get_csr, 如果 csr 不存在就抛异常, 所以只要在不打算实现的 csr 上抛出一个异常就行了
+在spike中,所有 csr 指令都会首先 `get_csr`, 如果 csr 不存在就抛异常, 所以只要在不打算实现的 csr 上抛出一个异常就行了
 
 ```c
 bool difftest_dut_csr_notexist = false;
@@ -179,7 +179,7 @@ void difftest_step_raise(uint64_t NO) {
 }
 ```
 
-#### 实现 difftest_csr
+#### 实现 `difftest_csr`
 
 - 修改 `difftest_init` 的 api, 传入需要 diff 的 csr 的索引数组
 - 每次diff的时候只传输需要diff的csr
@@ -1118,7 +1118,7 @@ busybox里面有platform-spec的适配代码,通过检查[`gcc 的 System-specif
 
 在nemu中,我们直接把输出打印到控制台,但是log也会打印到控制台,输入/输出/Log全部混在一起并不是一个明知的选择,所以我采用了[`伪终端(pseudoterminal)`](https://linux.die.net/man/7/pty),创建一个伪终端,通过screen链接这个伪终端来和nemu交互
 
-写了一个[`最小化实现的例子`](https://github.com/Seeker0472/ysyx-linux)
+写了一个[`最小化实现的例子`](https://github.com/Seeker0472/tinypty)
 
 ##### 一个未解之谜
 
@@ -1182,7 +1182,7 @@ priority order: MEI, MSI, MTI, SEI, SSI, STI, LCOFI.
 
 要让kernel知道中断发起的时候应该调用哪个处理函数,就需要我们自己注册中断了
 
-> 其实kernel文档提醒了: Probe 的时候获取中断号 (这里要判断一下是否正常, 否则等到 platform_get_irq 的时候会 fail)
+> 其实kernel文档提醒了: Probe 的时候获取中断号 (这里要判断一下是否正常, 否则等到 `platform_get_irq` 的时候会 fail)
 
 ```
 nemu_uart_port.irq = platform_get_irq(pdev, 0);
