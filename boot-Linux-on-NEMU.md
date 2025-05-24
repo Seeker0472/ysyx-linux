@@ -1021,6 +1021,9 @@ make linux
 
 ##### 有关`newlib`和`musl`库
 
+> [!WARNING]
+> 这一段未经验证,可能有问题
+
 不建议尝试使用`musl`和`newlib`
 
 截至目前,`newlib`上游只适配了`x86-linux`
@@ -1035,6 +1038,10 @@ newlib/libc/sys/linux/machine/i386/syscall.h file. At the moment, linux support
 is only for x86. To add another platform, the syscall.h file would 
 have to be supplied for the new platform plus some other 
 platform-specific files would need to be ported as well.
+
+> [!IMPORTANT]
+> 根据musl的configure,可能有riscv的支持
+> 感兴趣可以尝试用clang+muslc (TODO:docs here)
 
 截至目前,`musl` 上游没有支持`riscv-linux`
 
