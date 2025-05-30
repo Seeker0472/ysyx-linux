@@ -939,7 +939,7 @@ Uart-lite
 这样也可以简化kernel的实现,因为磁盘的实现有多种多样(可能是软件RAID, LVM, NFS...这些都需要特殊的步骤去挂载, ),但内存是简单统一的.
 再之后会调用`pivot_root()`来卸载`initramfs`并切换到真正的根文件系统
 
-需要打开initramdisk的支持,并把我们之后打包的initramfs添加进来
+需要修改kernel的menuconfig,打开initramdisk的支持,并把我们之后打包的initramfs添加进来:
 
 ```
 -> General setup -> Initial RAM filesystem and RAM disk (initramfs/initrd) support 
