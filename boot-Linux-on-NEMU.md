@@ -442,6 +442,9 @@ int isa_exec_once(Decode *s) {
 
 ### 配置kernel
 
+> [!NOTE]
+> BTW, 可以按 `/` 键来搜索menuconfig的选项 (虽然很符合直觉但似乎挺多人不知道hh)
+
 建议先从 `defconfig` 改动, 而不是 `tinyconfig` 改动, 先把 `kernel` 跑起来再说
 
 虽然提供了具体的配置方案,但还是建议大家自己好好看看kernel 有哪些配制
